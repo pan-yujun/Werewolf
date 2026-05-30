@@ -2,6 +2,8 @@ import type { DemoModePublicConfigSnapshot } from "@/lib/demo-config";
 import { ensureAdminClient, supabaseAdmin } from "@/lib/supabase-admin";
 import type { Database } from "@/types/database";
 
+const DEV_SKIP_AUTH = process.env.DEV_SKIP_AUTH === "true";
+
 type DemoConfigRow = Database["public"]["Tables"]["demo_config"]["Row"];
 
 const DEFAULT_CONFIG_ID = "default";
@@ -82,6 +84,18 @@ async function loadDemoConfigRow() {
 
 export async function getDemoModeConfigServer(): Promise<DemoModePublicConfigSnapshot> {
   const now = new Date();
+
+  // Dev skip auth mode: always return active demo mode
+  if (DEV_SKIP_AUTH) {
+    return {
+      source: "env",
+      enabled: true,
+      active: true,
+      startsAt: null,
+      expiresAt: null,
+      serverNow: now.toISOString(),
+    };
+  }
 
   try {
     ensureAdminClient();

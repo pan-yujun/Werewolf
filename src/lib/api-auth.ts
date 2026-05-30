@@ -3,10 +3,17 @@ import { ensureAdminClient, supabaseAdmin } from "@/lib/supabase-admin";
 import { isDemoModeActiveServer } from "@/lib/demo-config-server";
 import { isGuestUser } from "@/lib/demo-mode";
 
+const DEV_SKIP_AUTH = process.env.DEV_SKIP_AUTH === "true";
+
 export async function authenticateRequest(request: Request): Promise<
   | { user: { id: string } }
   | { error: NextResponse }
 > {
+  // Dev mode: skip all auth checks, return a mock user
+  if (DEV_SKIP_AUTH) {
+    return { user: { id: "dev-user-local" } };
+  }
+
   try {
     ensureAdminClient();
   } catch (error) {
@@ -44,6 +51,7 @@ export async function authenticateRequest(request: Request): Promise<
 }
 
 export async function requireCredits(userId: string): Promise<boolean> {
+  if (DEV_SKIP_AUTH) return true;
   if (await isDemoModeActiveServer()) return true;
 
   try {
@@ -63,6 +71,7 @@ export async function requireCredits(userId: string): Promise<boolean> {
 }
 
 export async function hasRecentUnfinishedGameSession(userId: string): Promise<boolean> {
+  if (DEV_SKIP_AUTH) return true;
   if (await isDemoModeActiveServer()) return true;
 
   try {

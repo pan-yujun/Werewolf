@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DASHSCOPE_VALIDATION_MODEL, ZENMUX_VALIDATION_MODEL } from "@/types/game";
+import { DASHSCOPE_VALIDATION_MODEL, MIMO_VALIDATION_MODEL, ZENMUX_VALIDATION_MODEL } from "@/types/game";
 
 const ZENMUX_API_URL = "https://zenmux.ai/api/v1/chat/completions";
 const DASHSCOPE_CHAT_COMPLETIONS_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+const MIMO_DEFAULT_API_URL = "https://api.mimo.xiaomi.com/v1/chat/completions";
 
 const VALIDATION_TIMEOUT_MS = 15000;
 
-type Provider = "zenmux" | "dashscope" | "tokendance";
+function getMimoUrl(): string {
+  const envBase = process.env.MIMO_API_BASE_URL?.trim();
+  if (!envBase) return MIMO_DEFAULT_API_URL;
+  if (envBase.includes("/chat/completions")) return envBase;
+  const withoutTrailingSlash = envBase.replace(/\/+$/, "");
+  return `${withoutTrailingSlash}/chat/completions`;
+}
+
+type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo";
 
 interface ValidationResult {
   provider: Provider;
@@ -324,14 +333,112 @@ async function validateDashscopeKey(apiKey: string): Promise<ValidationResult> {
   }
 }
 
+async function validateMimoKey(apiKey: string): Promise<ValidationResult> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(getMimoUrl(), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MIMO_VALIDATION_MODEL,
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 1,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      return { provider: "mimo", valid: true };
+    }
+
+    const errorText = await response.text().catch(() => "");
+    let errorCode = "";
+    let errorMessage = "";
+
+    try {
+      const errorJson = JSON.parse(errorText);
+      errorCode = errorJson?.error?.code || errorJson?.code || "";
+      errorMessage = errorJson?.error?.message || errorJson?.message || "";
+    } catch {
+      errorMessage = errorText;
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        provider: "mimo",
+        valid: false,
+        error: "Mimo API Key 无效或已过期",
+        errorCode: "invalid_key",
+      };
+    }
+
+    if (response.status === 402 || response.status === 429) {
+      const isQuotaError =
+        errorCode.includes("insufficient") ||
+        errorCode.includes("quota") ||
+        errorCode.includes("balance") ||
+        errorMessage.includes("insufficient") ||
+        errorMessage.includes("quota") ||
+        errorMessage.includes("余额");
+
+      if (isQuotaError || response.status === 402) {
+        return {
+          provider: "mimo",
+          valid: false,
+          error: "Mimo API Key 余额不足",
+          errorCode: "insufficient_quota",
+        };
+      }
+
+      return {
+        provider: "mimo",
+        valid: false,
+        error: "请求频率超限，请稍后再试",
+        errorCode: "rate_limit",
+      };
+    }
+
+    return {
+      provider: "mimo",
+      valid: false,
+      error: `验证失败: ${response.status} - ${errorMessage || errorText}`,
+      errorCode: "unknown",
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        provider: "mimo",
+        valid: false,
+        error: "验证超时，请检查网络连接",
+        errorCode: "timeout",
+      };
+    }
+    return {
+      provider: "mimo",
+      valid: false,
+      error: `网络错误: ${String(error)}`,
+      errorCode: "network_error",
+    };
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const zenmuxKey = request.headers.get("x-zenmux-api-key")?.trim() || "";
     const dashscopeKey = request.headers.get("x-dashscope-api-key")?.trim() || "";
     const tokendanceKey = request.headers.get("x-tokendance-api-key")?.trim() || "";
     const tokendanceBaseUrl = request.headers.get("x-tokendance-base-url")?.trim() || "";
+    const mimoKey = request.headers.get("x-mimo-api-key")?.trim() || "";
 
-    if (!zenmuxKey && !dashscopeKey && !tokendanceKey) {
+    if (!zenmuxKey && !dashscopeKey && !tokendanceKey && !mimoKey) {
       return NextResponse.json(
         { error: "未提供任何 API Key", valid: false },
         { status: 400 }
@@ -356,6 +463,9 @@ export async function POST(request: NextRequest) {
         error: "未提供 TokenDance Base URL",
         errorCode: "missing_base_url",
       });
+    }
+    if (mimoKey) {
+      validationPromises.push(validateMimoKey(mimoKey));
     }
 
     const settled = await Promise.all(validationPromises);

@@ -2104,6 +2104,12 @@
       "note": "DeepSeek / Qwen / Kimi, etc.",
       "short": "Dashscope"
     },
+    "mimo": {
+      "label": "Mimo API Key",
+      "placeholder": "Optional: Xiaomi Mimo",
+      "hide": "Hide Mimo API Key",
+      "show": "Show Mimo API Key"
+    },
     "modelConfig": {
       "title": "Model Configuration",
       "description": "Character generation, daily summary, and AI player selection",

@@ -1,4 +1,4 @@
-import { getDashscopeApiKey, getZenmuxApiKey, isCustomKeyEnabled } from "@/lib/api-keys";
+import { getDashscopeApiKey, getMimoApiKey, getZenmuxApiKey, isCustomKeyEnabled } from "@/lib/api-keys";
 import { ALL_MODELS, AVAILABLE_MODELS, PROJECT_MODELS, type ModelRef } from "@/types/game";
 import { gameStatsTracker } from "@/hooks/useGameStats";
 import { gameSessionTracker } from "@/lib/game-session-tracker";
@@ -18,7 +18,7 @@ export interface LLMMessage {
   reasoning_details?: unknown;
 }
 
-type Provider = "zenmux" | "dashscope" | "tokendance";
+type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -37,8 +37,11 @@ function getProviderForModel(model: string): Provider {
 // model to avoid requiring a user-supplied key after the toggle is turned off.
 function resolveModelForBuiltin(model: string): string {
   if (PROJECT_MODELS.some((r) => r.model === model)) return model;
+  // Prefer mimo if available, then zenmux, then first available
   const m =
-    AVAILABLE_MODELS.find((r) => r.provider === "zenmux") ?? AVAILABLE_MODELS[0];
+    AVAILABLE_MODELS.find((r) => r.provider === "mimo") ??
+    AVAILABLE_MODELS.find((r) => r.provider === "zenmux") ??
+    AVAILABLE_MODELS[0];
   return m?.model ?? model;
 }
 
@@ -52,6 +55,9 @@ export function resolveApiKeySource(model: string): ApiKeySource {
    }
    if (provider === "tokendance") {
      return "project";
+   }
+   if (provider === "mimo") {
+     return getMimoApiKey() ? "user" : "project";
    }
    return getZenmuxApiKey() ? "user" : "project";
  }
@@ -459,6 +465,7 @@ export async function generateCompletion(
   const customEnabled = isCustomKeyEnabled();
   const headerApiKey = customEnabled ? getZenmuxApiKey() : "";
   const dashscopeApiKey = customEnabled ? getDashscopeApiKey() : "";
+  const mimoApiKey = customEnabled ? getMimoApiKey() : "";
   const modelToUse = customEnabled
     ? options.model
     : resolveModelForBuiltin(options.model);
@@ -471,6 +478,9 @@ export async function generateCompletion(
   if (dashscopeApiKey) {
     headers["X-Dashscope-Api-Key"] = dashscopeApiKey;
   }
+  if (mimoApiKey) {
+    headers["X-Mimo-Api-Key"] = mimoApiKey;
+  }
 
   Object.assign(headers, await getAuthHeaders());
 
@@ -481,6 +491,19 @@ export async function generateCompletion(
     model: modelToUse,
   });
 
+  const requestBody = {
+    model: modelToUse,
+    ...(options.provider ? { provider: options.provider } : {}),
+    messages: options.messages,
+    temperature: options.temperature ?? 0.7,
+    max_tokens: maxTokens,
+    ...(options.reasoning ? { reasoning: options.reasoning } : {}),
+    ...(options.reasoning_effort ? { reasoning_effort: options.reasoning_effort } : {}),
+    ...(options.response_format ? { response_format: options.response_format } : {}),
+  };
+
+  console.log("[LLM] Request body:", JSON.stringify(requestBody).slice(0, 1000));
+
   const response = await fetchWithRetry(
     "/api/chat",
     {
@@ -488,16 +511,7 @@ export async function generateCompletion(
       headers: {
         ...headers,
       },
-      body: JSON.stringify({
-        model: modelToUse,
-        ...(options.provider ? { provider: options.provider } : {}),
-        messages: options.messages,
-        temperature: options.temperature ?? 0.7,
-        max_tokens: maxTokens,
-        ...(options.reasoning ? { reasoning: options.reasoning } : {}),
-        ...(options.reasoning_effort ? { reasoning_effort: options.reasoning_effort } : {}),
-        ...(options.response_format ? { response_format: options.response_format } : {}),
-      }),
+      body: JSON.stringify(requestBody),
     },
     4
   );
@@ -560,6 +574,7 @@ export async function generateCompletionBatch(
   const customEnabled = isCustomKeyEnabled();
   const headerApiKey = customEnabled ? getZenmuxApiKey() : "";
   const dashscopeApiKey = customEnabled ? getDashscopeApiKey() : "";
+  const mimoApiKey = customEnabled ? getMimoApiKey() : "";
   const resolvedRequests = customEnabled
     ? requests
     : requests.map((r) => ({ ...r, model: resolveModelForBuiltin(r.model) }));
@@ -571,6 +586,9 @@ export async function generateCompletionBatch(
   }
   if (dashscopeApiKey) {
     headers["X-Dashscope-Api-Key"] = dashscopeApiKey;
+  }
+  if (mimoApiKey) {
+    headers["X-Mimo-Api-Key"] = mimoApiKey;
   }
 
   Object.assign(headers, await getAuthHeaders());

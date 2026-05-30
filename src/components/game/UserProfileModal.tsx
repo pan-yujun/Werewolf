@@ -24,15 +24,18 @@ import {
   getGeneratorModel,
   getMinimaxApiKey,
   getMinimaxGroupId,
+  getMimoApiKey,
   getSelectedModels,
   getSummaryModel,
   getReviewModel,
   getZenmuxApiKey,
   getValidatedZenmuxKey,
   getValidatedDashscopeKey,
+  getValidatedMimoKey,
   setGeneratorModel,
   setMinimaxApiKey,
   setMinimaxGroupId,
+  setMimoApiKey,
   setSelectedModels,
   setSummaryModel,
   setReviewModel,
@@ -41,6 +44,7 @@ import {
   setCustomKeyEnabled,
   setValidatedZenmuxKey,
   setValidatedDashscopeKey,
+  setValidatedMimoKey,
   isCustomKeyEnabled as getCustomKeyEnabled,
 } from "@/lib/api-keys";
 import { getModelLogoPath } from "@/lib/model-logo";
@@ -51,6 +55,7 @@ import {
   AVAILABLE_MODELS,
   DASHSCOPE_VALIDATION_MODEL,
   GENERATOR_MODEL,
+  MIMO_VALIDATION_MODEL,
   ZENMUX_VALIDATION_MODEL,
   SUMMARY_MODEL,
   REVIEW_MODEL,
@@ -100,10 +105,12 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
   const t = useTranslations();
   const [zenmuxKey, setZenmuxKeyState] = useState("");
   const [dashscopeKey, setDashscopeKeyState] = useState("");
+  const [mimoKey, setMimoKeyState] = useState("");
   const [minimaxKey, setMinimaxKeyState] = useState("");
   const [minimaxGroupId, setMinimaxGroupIdState] = useState("");
   const [showZenmuxKey, setShowZenmuxKey] = useState(false);
   const [showDashscopeKey, setShowDashscopeKey] = useState(false);
+  const [showMimoKey, setShowMimoKey] = useState(false);
   const [showMinimaxKey, setShowMinimaxKey] = useState(false);
   const [showMinimaxGroupId, setShowMinimaxGroupId] = useState(false);
   const [isCustomKeyEnabled, setIsCustomKeyEnabled] = useState(false);
@@ -114,9 +121,11 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
   const [isValidatingZenmux, setIsValidatingZenmux] = useState(false);
   const [isValidatingDashscope, setIsValidatingDashscope] = useState(false);
-  const [validatedKeys, setValidatedKeys] = useState<{ zenmux: string; dashscope: string }>({
+  const [isValidatingMimo, setIsValidatingMimo] = useState(false);
+  const [validatedKeys, setValidatedKeys] = useState<{ zenmux: string; dashscope: string; mimo: string }>({
     zenmux: "",
     dashscope: "",
+    mimo: "",
   });
   const [purchaseQuantity, setPurchaseQuantity] = useState(10);
   const [purchaseQuantityInput, setPurchaseQuantityInput] = useState("10");
@@ -140,6 +149,7 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
     let mounted = true;
     const nextZenmuxKey = getZenmuxApiKey();
     const nextDashscopeKey = getDashscopeApiKey();
+    const nextMimoKey = getMimoApiKey();
     const nextMinimaxKey = getMinimaxApiKey();
     const nextMinimaxGroupId = getMinimaxGroupId();
     const nextSelectedModels = getSelectedModels();
@@ -150,6 +160,7 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
     if (mounted) {
       setZenmuxKeyState(nextZenmuxKey);
       setDashscopeKeyState(nextDashscopeKey);
+      setMimoKeyState(nextMimoKey);
       setMinimaxKeyState(nextMinimaxKey);
       setMinimaxGroupIdState(nextMinimaxGroupId);
       setSelectedModelsState(nextSelectedModels);
@@ -159,9 +170,11 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
       setIsCustomKeyEnabled(storedCustomEnabled);
       const z = nextZenmuxKey;
       const d = nextDashscopeKey;
+      const m = nextMimoKey;
       setValidatedKeys({
         zenmux: z && getValidatedZenmuxKey() === z ? z : "",
         dashscope: d && getValidatedDashscopeKey() === d ? d : "",
+        mimo: m && getValidatedMimoKey() === m ? m : "",
       });
     }
     return () => {
@@ -171,6 +184,7 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
 
   const zenmuxConfigured = Boolean(zenmuxKey.trim());
   const dashscopeConfigured = Boolean(dashscopeKey.trim());
+  const mimoConfigured = Boolean(mimoKey.trim());
   const modelPool = useMemo(() => {
     return ALL_MODELS;
   }, []);
@@ -181,16 +195,18 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
     const providers = new Set<ModelRef["provider"]>();
     if (zenmuxConfigured) providers.add("zenmux");
     if (dashscopeConfigured) providers.add("dashscope");
+    if (mimoConfigured) providers.add("mimo");
     if (providers.size === 0) return [];
     return modelPool.filter((ref) => providers.has(ref.provider));
-  }, [dashscopeConfigured, modelPool, zenmuxConfigured]);
+  }, [dashscopeConfigured, mimoConfigured, modelPool, zenmuxConfigured]);
   const defaultAvailableModels = useMemo(() => {
     const providers = new Set<ModelRef["provider"]>();
     if (zenmuxConfigured) providers.add("zenmux");
     if (dashscopeConfigured) providers.add("dashscope");
+    if (mimoConfigured) providers.add("mimo");
     if (providers.size === 0) return [];
     return defaultModelPool.filter((ref) => providers.has(ref.provider));
-  }, [dashscopeConfigured, defaultModelPool, zenmuxConfigured]);
+  }, [dashscopeConfigured, defaultModelPool, mimoConfigured, zenmuxConfigured]);
   const playerModelPool = useMemo(() => {
     return filterPlayerModels(availableModelPool);
   }, [availableModelPool]);
@@ -260,7 +276,8 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
     if (isCustomKeyEnabled) {
       const zenmuxOk = !zenmuxKey.trim() || validatedKeys.zenmux === zenmuxKey.trim();
       const dashscopeOk = !dashscopeKey.trim() || validatedKeys.dashscope === dashscopeKey.trim();
-      if (!zenmuxOk || !dashscopeOk) {
+      const mimoOk = !mimoKey.trim() || validatedKeys.mimo === mimoKey.trim();
+      if (!zenmuxOk || !dashscopeOk || !mimoOk) {
         toast(t("customKey.toasts.notValidated"), { description: t("customKey.toasts.notValidatedDesc") });
         return;
       }
@@ -300,6 +317,7 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
     }
     setZenmuxApiKey(zenmuxKey);
     setDashscopeApiKey(dashscopeKey);
+    setMimoApiKey(mimoKey);
     setMinimaxApiKey(minimaxKey);
     setMinimaxGroupId(minimaxGroupId);
     setSelectedModels(nextSelectedModels);
@@ -315,7 +333,7 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
   };
 
   const validateProviderKey = async (options: {
-    provider: "zenmux" | "dashscope";
+    provider: "zenmux" | "dashscope" | "mimo";
     key: string;
     model: string;
   }) => {
@@ -327,6 +345,8 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
       headers["X-Zenmux-Api-Key"] = key;
     } else if (provider === "dashscope") {
       headers["X-Dashscope-Api-Key"] = key;
+    } else if (provider === "mimo") {
+      headers["X-Mimo-Api-Key"] = key;
     }
 
     const response = await fetch("/api/validate-key", {
@@ -392,6 +412,28 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
       });
     } finally {
       setIsValidatingDashscope(false);
+    }
+  };
+
+  const handleValidateMimo = async () => {
+    if (isValidatingMimo || !mimoKey.trim()) return;
+    setIsValidatingMimo(true);
+    try {
+      await validateProviderKey({
+        provider: "mimo",
+        key: mimoKey.trim(),
+        model: MIMO_VALIDATION_MODEL,
+      });
+      setValidatedKeys((prev) => ({ ...prev, mimo: mimoKey.trim() }));
+      setValidatedMimoKey(mimoKey.trim());
+    } catch (error) {
+      setValidatedKeys((prev) => ({ ...prev, mimo: "" }));
+      if (mimoKey.trim() === getValidatedMimoKey()) setValidatedMimoKey("");
+      toast(t("customKey.toasts.validateFailed"), {
+        description: t("customKey.toasts.validateFailedDesc"),
+      });
+    } finally {
+      setIsValidatingMimo(false);
     }
   };
 
@@ -824,6 +866,38 @@ import type { SpringCampaignSnapshot } from "@/lib/spring-campaign";
                         </div>
                         <ArrowRight size={14} className="shrink-0 text-[var(--text-muted)]" />
                       </a>
+                    </div>
+
+                    <div className="border-t border-[var(--border-color)] pt-3 space-y-2">
+                      <Label htmlFor="mimo-key" className="text-xs">{t("customKey.mimo.label")}</Label>
+
+                      <div className="flex gap-2">
+                        <Input
+                          id="mimo-key"
+                          name="wolfcha-mimo-api-key"
+                          type={showMimoKey ? "text" : "password"}
+                          autoComplete="new-password"
+                          placeholder={t("customKey.mimo.placeholder")}
+                          value={mimoKey}
+                          onChange={(e) => {
+                            setMimoKeyState(e.target.value);
+                            setValidatedKeys((prev) => ({ ...prev, mimo: "" }));
+                          }}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowMimoKey((v) => !v)}
+                          aria-label={showMimoKey ? t("customKey.mimo.hide") : t("customKey.mimo.show")}
+                        >
+                          {showMimoKey ? <EyeSlash size={16} /> : <Eye size={16} />}
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={handleValidateMimo} disabled={isValidatingMimo || !mimoKey.trim() || (!!validatedKeys.mimo && validatedKeys.mimo === mimoKey.trim())}>
+                          {isValidatingMimo ? t("customKey.validating") : validatedKeys.mimo && validatedKeys.mimo === mimoKey.trim() ? <Check size={16} className="text-[var(--color-success)]" /> : t("customKey.validate")}
+                        </Button>
+                      </div>
                     </div>
 
                   </section>

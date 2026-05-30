@@ -2186,6 +2186,12 @@
       "note": "DeepSeek / Qwen / Kimi 等",
       "short": "百炼"
     },
+    "mimo": {
+      "label": "Mimo API Key",
+      "placeholder": "可选：小米 Mimo",
+      "hide": "隐藏 Mimo API Key",
+      "show": "显示 Mimo API Key"
+    },
     "modelConfig": {
       "title": "模型配置",
       "description": "人物生成、每日总结与 AI 玩家抽选",

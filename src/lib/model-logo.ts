@@ -11,6 +11,7 @@ const MODEL_LOGO_MAP: Array<{ match: RegExp; key: string }> = [
   { match: /bytedance|seed/i, key: "bytedance" },
   { match: /openai|gpt/i, key: "openai" },
   { match: /kimi|moonshot/i, key: "kimi" },
+  { match: /mimo/i, key: "mimo" },
 ];
 
 export function getModelLogoPath(modelRef?: ModelRef): string {
