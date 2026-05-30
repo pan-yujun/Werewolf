@@ -13,6 +13,8 @@ import {
   Drop,
   Crosshair,
   GearSix,
+  Flag,
+  Stop,
 } from "@phosphor-icons/react";
 import {
   WerewolfIcon,
@@ -38,7 +40,10 @@ import { useAtom } from "jotai";
 import { BADGE_TRANSFER_TORN } from "@/lib/game-master";
 
 // Components
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { WelcomeScreen } from "@/components/game/WelcomeScreen";
+import { GameLoadingProgress } from "@/components/game/GameLoadingProgress";
 import { PlayerCardCompact } from "@/components/game/PlayerCardCompact";
 import { DialogArea } from "@/components/game/DialogArea";
 import { BottomActionPanel } from "@/components/game/BottomActionPanel";
@@ -148,6 +153,7 @@ export default function Home() {
     gameStarted,
     gameState,
     isLoading,
+    loadingProgress,
     isWaitingForAI,
     currentDialogue,
     inputText,
@@ -531,6 +537,7 @@ export default function Home() {
   const [isEventLogOpen, setIsEventLogOpen] = useState(false);
   const [isDevConsoleOpen, setIsDevConsoleOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
   const [detailPlayer, setDetailPlayer] = useState<Player | null>(null);
   const [isRoleRevealOpen, setIsRoleRevealOpen] = useState(false);
   const [hasShownRoleReveal, setHasShownRoleReveal] = useState(false);
@@ -1440,9 +1447,24 @@ export default function Home() {
               <div className="wc-topbar wc-topbar--responsive shrink-0 transition-all duration-300">
                 {/* 移动端第一行：Logo + 设置按钮 */}
                 <div className="wc-topbar__row-1 flex items-center justify-between w-full md:w-auto md:contents">
-                  <div className="wc-topbar__title">
-                    <WerewolfIcon size={22} className="text-[var(--color-blood)]" />
-                    <span>WOLFCHA</span>
+                  <div className="flex items-center gap-2">
+                    <div className="wc-topbar__title">
+                      <WerewolfIcon size={22} className="text-[var(--color-blood)]" />
+                      <span>WOLFCHA</span>
+                    </div>
+                    {/* 结束游戏按钮 */}
+                    {gameInProgress && (
+                      <button
+                        type="button"
+                        onClick={() => setIsExitConfirmOpen(true)}
+                        title={t("page.endGame")}
+                        aria-label={t("page.endGame")}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs text-red-400 transition-all hover:border-red-500 hover:bg-red-500/20 hover:text-red-300"
+                      >
+                        <Stop size={14} weight="fill" />
+                        <span className="hidden sm:inline">{t("page.endGame")}</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* 移动端设置按钮 - 只显示图标 */}
@@ -1743,6 +1765,51 @@ export default function Home() {
         isGameInProgress={gameInProgress}
         onExitGame={restartGame}
       />
+
+      {/* 结束游戏确认对话框 */}
+      <Dialog open={isExitConfirmOpen} onOpenChange={setIsExitConfirmOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-400">
+              <Stop size={20} weight="fill" />
+              {t("page.endGameConfirmTitle")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("page.endGameConfirmDesc")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setIsExitConfirmOpen(false)}
+            >
+              {t("page.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setIsExitConfirmOpen(false);
+                // 停止当前音频播放
+                audioManager.stopCurrent();
+                // 结束游戏
+                restartGame();
+              }}
+            >
+              {t("page.endGame")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 游戏加载进度条 */}
+      <AnimatePresence>
+        {isLoading && loadingProgress.stage && (
+          <GameLoadingProgress
+            percent={loadingProgress.percent}
+            stage={loadingProgress.stage}
+          />
+        )}
+      </AnimatePresence>
 
       {/* 开发者模式 - 只在游戏开始后显示 */}
       {showTable && showDevTools && (

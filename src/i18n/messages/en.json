@@ -1156,6 +1156,22 @@
     "witchPoisonUsed": {
       "title": "Poison already used",
       "description": "Tonight you can only save, or skip."
+    },
+    "endGame": "End Game",
+    "endGameConfirmTitle": "Confirm End Game",
+    "endGameConfirmDesc": "Are you sure you want to end the current game? Game progress will not be saved.",
+    "cancel": "Cancel"
+  },
+  "loadingProgress": {
+    "stages": {
+      "init": "Initializing...",
+      "scenario": "Generating game scenario...",
+      "players": "Preparing player seats...",
+      "profiles": "Generating player profiles...",
+      "personas": "Generating player personalities...",
+      "roles": "Assigning roles...",
+      "finalizing": "Preparing to start...",
+      "complete": "Ready!"
     }
   },
   "ritual": {

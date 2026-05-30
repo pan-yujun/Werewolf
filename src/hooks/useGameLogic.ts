@@ -96,6 +96,7 @@ export function useGameLogic() {
   const [gameStarted, setGameStarted] = useState(false);
   const [gameState, setGameState] = useAtom(gameStateAtom);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState({ percent: 0, stage: "" });
   const [inputText, setInputText] = useState("");
   const [showTable, setShowTable] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
@@ -1376,8 +1377,10 @@ export function useGameLogic() {
     }
 
     setIsLoading(true);
+    setLoadingProgress({ percent: 0, stage: "init" });
     try {
       // 初始化游戏统计追踪器
+      setLoadingProgress({ percent: 5, stage: "init" });
       const statsConfig = {
         playerCount,
         difficulty,
@@ -1399,6 +1402,7 @@ export function useGameLogic() {
         console.error("[game-session] Failed to create:", err);
       });
 
+      setLoadingProgress({ percent: 10, stage: "scenario" });
       const systemMessages = getSystemMessages();
       const scenario = isGenshinMode ? undefined : getRandomScenario();
       const makeId = () => generateUUID();
@@ -1454,6 +1458,8 @@ export function useGameLogic() {
       let genshinModelRefs: ModelRef[] | undefined = undefined;
       const numAiPlayers = isSpectatorMode ? totalPlayers : totalPlayers - 1;
 
+      setLoadingProgress({ percent: 15, stage: "players" });
+
       // Convert custom characters to GeneratedCharacter format
       const customCharsToUse = customCharacters.slice(0, numAiPlayers);
       const customGeneratedCharacters: GeneratedCharacter[] = customCharsToUse.map((cc) => ({
@@ -1503,6 +1509,7 @@ export function useGameLogic() {
       const hasCustomCharacters = customGeneratedCharacters.length > 0;
 
       if (hasCustomCharacters) {
+        setLoadingProgress({ percent: 20, stage: "players" });
         applyCustomCharactersToState(customGeneratedCharacters);
         // Fill remaining slots with generated characters if needed
         const remainingCount = numAiPlayers - customGeneratedCharacters.length;
@@ -1512,6 +1519,7 @@ export function useGameLogic() {
         } else {
           characters = customGeneratedCharacters;
         }
+        setLoadingProgress({ percent: 80, stage: "players" });
         
         // Custom characters appear immediately (no delay), generated ones animate in
         const customCount = customGeneratedCharacters.length;
@@ -1541,8 +1549,10 @@ export function useGameLogic() {
           }, delay);
         });
       } else if (isGenshinMode) {
+        setLoadingProgress({ percent: 20, stage: "players" });
         genshinModelRefs = buildGenshinModelRefs(numAiPlayers);
         characters = await generateGenshinModeCharacters(numAiPlayers, genshinModelRefs);
+        setLoadingProgress({ percent: 80, stage: "players" });
         
         // 为 Genshin 模式添加逐个出现的动画效果
         characters.forEach((character, index) => {
@@ -1568,8 +1578,10 @@ export function useGameLogic() {
           }, 200 + index * 180); // 逐个出现，每个间隔 180ms
         });
       } else {
+        setLoadingProgress({ percent: 20, stage: "profiles" });
         characters = await generateCharacters(numAiPlayers, scenario, {
           onBaseProfiles: (profiles) => {
+            setLoadingProgress({ percent: 40, stage: "personas" });
             profiles.forEach((p, i) => {
               const seat = aiSeatOrder[i] ?? i + 1;
               window.setTimeout(() => {
@@ -1584,6 +1596,9 @@ export function useGameLogic() {
             });
           },
           onCharacter: (index, character) => {
+            // Update progress based on character index
+            const progress = 40 + Math.floor((index / numAiPlayers) * 40);
+            setLoadingProgress({ percent: progress, stage: "personas" });
             const seat = aiSeatOrder[index] ?? index + 1;
             window.setTimeout(() => {
               setGameState((prev) => {
@@ -1606,8 +1621,10 @@ export function useGameLogic() {
             }, 120);
           },
         });
+        setLoadingProgress({ percent: 80, stage: "personas" });
       }
 
+      setLoadingProgress({ percent: 85, stage: "roles" });
       const players = setupPlayers(
         characters,
         humanSeat,
@@ -1680,6 +1697,7 @@ export function useGameLogic() {
 
       setGameState(newState);
 
+      setLoadingProgress({ percent: 95, stage: "finalizing" });
       // In spectator mode, skip role reveal and start the game immediately
       if (isSpectatorMode) {
         pendingStartStateRef.current = null;
@@ -1717,7 +1735,12 @@ export function useGameLogic() {
       setGameStarted(false);
       setShowTable(false);
     } finally {
-      setIsLoading(false);
+      setLoadingProgress({ percent: 100, stage: "complete" });
+      // Small delay before hiding progress bar so user can see 100%
+      setTimeout(() => {
+        setIsLoading(false);
+        setLoadingProgress({ percent: 0, stage: "" });
+      }, 500);
     }
   }, [humanName, resetDialogueState, setDialogue, setGameStarted, setGameState, setInputText, setIsLoading, setShowTable, t]);
 
@@ -1749,21 +1772,39 @@ export function useGameLogic() {
 
   /** 重新开始 */
   const restartGame = useCallback(() => {
+    // 1. 中断所有异步流程
     flowController.current.interrupt();
 
-    // Clear persisted game state from localStorage
+    // 2. 结束当前游戏会话（如果有）
+    gameSessionTracker.end(null, false).catch(() => {});
+
+    // 3. 清除持久化的游戏状态
     clearPersistedGameState();
-    
+
+    // 4. 重置游戏状态到初始值
     setGameState(createInitialGameState());
+
+    // 5. 重置对话状态
     resetDialogueState();
+
+    // 6. 清空输入
     setInputText("");
+
+    // 7. 隐藏桌面，标记游戏未开始
     setShowTable(false);
     setGameStarted(false);
 
+    // 8. 清理所有 refs
     pendingStartStateRef.current = null;
     hasContinuedAfterRevealRef.current = false;
     isAwaitingRoleRevealRef.current = false;
     badgeSpeechEndRef.current = null;
+    afterLastWordsRef.current = null;
+    nightContinueRef.current = null;
+    afterBadgeTransferRef.current = null;
+    isResolvingVotesRef.current = false;
+
+    // 9. 清除定时器
     if (showTableTimeoutRef.current !== null) {
       window.clearTimeout(showTableTimeoutRef.current);
       showTableTimeoutRef.current = null;
@@ -2257,6 +2298,7 @@ export function useGameLogic() {
     gameStarted,
     gameState,
     isLoading,
+    loadingProgress,
     isWaitingForAI,
     waitingForNextRound,
     currentDialogue,

@@ -17,17 +17,16 @@ import { getRandomScenario } from "./scenarios";
 import { resolveVoiceId, VOICE_PRESETS, type AppLocale } from "./voice-constants";
 import { getI18n } from "@/i18n/translator";
 import { parseLLMJson } from "./llm-json";
+import { generateBuiltinCharacters, DEFAULT_PLAYER_MIND, DEFAULT_VOICE_RULES } from "./builtin-characters";
 
-export interface GeneratedCharacter {
-  displayName: string;
-  persona: Persona;
-  playerMind?: PlayerMind;
-  avatarSeed?: string;
-}
+export type { GeneratedCharacter } from "./builtin-characters";
 
 export interface GeneratedCharacters {
   characters: GeneratedCharacter[];
 }
+
+// Re-export for backward compatibility
+export { generateBuiltinCharacters } from "./builtin-characters";
 
 export type Gender = "male" | "female" | "nonbinary";
 
@@ -264,7 +263,13 @@ const isValidPersona = (p: any): p is Persona => {
   if (!p || typeof p !== "object") return false;
   // styleLabel is now optional
   if (p.styleLabel !== undefined && typeof p.styleLabel !== "string") return false;
-  if (!Array.isArray(p.voiceRules) || p.voiceRules.filter((x: any) => typeof x === "string" && x.trim()).length === 0) return false;
+  // voiceRules is optional - provide default if missing
+  if (p.voiceRules !== undefined) {
+    if (!Array.isArray(p.voiceRules)) return false;
+    // Filter out non-string or empty values
+    const validRules = p.voiceRules.filter((x: any) => typeof x === "string" && x.trim());
+    if (validRules.length === 0) return false;
+  }
   if (!isValidMbti(p.mbti)) return false;
   if (!isValidGender(p.gender)) return false;
   if (typeof p.age !== "number" || !Number.isFinite(p.age) || p.age < 16 || p.age > 70) return false;
@@ -277,9 +282,15 @@ const isValidPersona = (p: any): p is Persona => {
 
 const isValidPersonaForProfile = (p: any, profile: BaseProfile): p is Persona => {
   if (!isValidPersona(p)) return false;
+  // Allow some flexibility for LLM-generated content
+  // Gender must match (this is important for game logic)
   if (p.gender !== profile.gender) return false;
-  if (p.age !== profile.age) return false;
-  if (String(p.mbti).trim() !== profile.mbti) return false;
+  // Age can be within ±5 years
+  if (typeof p.age === "number" && typeof profile.age === "number") {
+    if (Math.abs(p.age - profile.age) > 5) return false;
+  }
+  // MBTI can be different (LLM might not follow exact MBTI)
+  // We'll accept any valid MBTI
   return true;
 };
 
@@ -303,6 +314,31 @@ const isValidPlayerMind = (mind: unknown): mind is PlayerMind => {
   }
   return true;
 };
+
+// Fill in missing PlayerMind fields with defaults
+function fillPlayerMindDefaults(mind: unknown): PlayerMind {
+  if (!mind || typeof mind !== "object") return { ...DEFAULT_PLAYER_MIND };
+  const record = mind as Record<string, unknown>;
+  const result: PlayerMind = { ...DEFAULT_PLAYER_MIND };
+  for (const key of PLAYER_MIND_REQUIRED_FIELDS) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      result[key] = value.trim();
+    }
+  }
+  return result;
+}
+
+// Fill in missing persona fields with defaults
+function fillPersonaDefaults(p: any): any {
+  if (!p || typeof p !== "object") return p;
+  const result = { ...p };
+  // Fill in missing voiceRules
+  if (!result.voiceRules || !Array.isArray(result.voiceRules) || result.voiceRules.length === 0) {
+    result.voiceRules = [...DEFAULT_VOICE_RULES];
+  }
+  return result;
+}
 
 const alignCharactersToProfiles = (
   chars: unknown,
@@ -341,21 +377,24 @@ const alignCharactersToProfiles = (
       console.error(`[alignCharacters] character not found for profile: ${key}, available names:`, Array.from(byName.keys()));
       return null;
     }
-    if (!isValidPersonaForProfile(c.persona, profile) || !isValidPlayerMind(c.playerMind)) {
-      const p = c.persona as any;
+    // Try to fill in missing fields before validation
+    const filledPersona = fillPersonaDefaults(c.persona);
+    if (!isValidPersonaForProfile(filledPersona, profile)) {
+      const p = filledPersona as any;
       console.error(`[alignCharacters] invalid persona for ${key}:`, {
-        persona: c.persona,
+        persona: filledPersona,
         playerMind: c.playerMind,
         profile: { gender: profile.gender, age: profile.age, mbti: profile.mbti },
-        isValid: isValidPersona(c.persona),
-        isValidPlayerMind: isValidPlayerMind(c.playerMind),
+        isValid: isValidPersona(filledPersona),
         genderMatch: p?.gender === profile.gender,
         ageMatch: p?.age === profile.age,
         mbtiMatch: String(p?.mbti || "").trim() === profile.mbti,
       });
       return null;
     }
-    ordered.push(c);
+    // Fill in missing playerMind fields with defaults
+    const playerMind = isValidPlayerMind(c.playerMind) ? c.playerMind : fillPlayerMindDefaults(c.playerMind);
+    ordered.push({ ...c, persona: filledPersona, playerMind });
   }
   return ordered;
 };
@@ -463,27 +502,33 @@ export async function generateCharacters(
             if (profileIndex === -1) continue;
             
             const profile = baseProfiles[profileIndex];
-            
+
+            // Try to fill in missing fields before validation
+            const filledPersona = fillPersonaDefaults(c.persona);
+
             // 验证 persona 是否有效
-            if (isValidPersonaForProfile(c.persona, profile) && isValidPlayerMind(c.playerMind)) {
+            if (isValidPersonaForProfile(filledPersona, profile)) {
               emittedIndices.add(profileIndex);
-              
+
               const voiceId = resolveVoiceId(
-                c.persona.voiceId,
-                c.persona.gender,
-                c.persona.age,
+                filledPersona.voiceId,
+                filledPersona.gender,
+                filledPersona.age,
                 "zh" as AppLocale
               );
+
+              // Fill in missing playerMind fields with defaults
+              const playerMind = isValidPlayerMind(c.playerMind) ? c.playerMind : fillPlayerMindDefaults(c.playerMind);
 
               const character: GeneratedCharacter = {
                 displayName: profile.displayName,
                 persona: {
-                  ...c.persona,
+                  ...filledPersona,
                   basicInfo: profile.basicInfo, // Carry over basicInfo from BaseProfile
                   voiceId,
                   relationships: undefined,
                 },
-                playerMind: c.playerMind,
+                playerMind,
               };
 
               finalizedCharacters[profileIndex] = character;
@@ -593,10 +638,10 @@ export async function generateCharacters(
       if (attempt === 0) {
         continue;
       }
-      console.error("Character generation failed:", error);
+      console.error("Character generation failed, using built-in characters:", error);
       await aiLogger.log({
         type: "character_generation",
-        request: { 
+        request: {
           model: GENERATOR_MODEL,
           messages: [{ role: "user", content: "(two-stage generation)" }],
         },
@@ -606,5 +651,7 @@ export async function generateCharacters(
     }
   }
 
-  throw lastError;
+  // Fallback: use built-in characters when LLM generation fails
+  console.log("[character-gen] Using built-in fallback characters");
+  return generateBuiltinCharacters(count);
 }

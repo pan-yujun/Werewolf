@@ -1214,6 +1214,22 @@
     "witchPoisonUsed": {
       "title": "毒药已用过了",
       "description": "今晚只能选择救人，或直接跳过。"
+    },
+    "endGame": "结束游戏",
+    "endGameConfirmTitle": "确认结束游戏",
+    "endGameConfirmDesc": "确定要结束当前游戏吗？游戏进度将不会保存。",
+    "cancel": "取消"
+  },
+  "loadingProgress": {
+    "stages": {
+      "init": "正在初始化...",
+      "scenario": "生成游戏场景中...",
+      "players": "准备玩家座位中...",
+      "profiles": "生成玩家档案中...",
+      "personas": "生成玩家性格中...",
+      "roles": "分配角色中...",
+      "finalizing": "准备开始游戏...",
+      "complete": "准备就绪！"
     }
   },
   "ritual": {
