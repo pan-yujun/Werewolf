@@ -1,5 +1,6 @@
-import { getMinimaxApiKey, getMinimaxGroupId, isCustomKeyEnabled } from "@/lib/api-keys";
+import { getMinimaxApiKey, getMinimaxGroupId, getMimoApiKey, isCustomKeyEnabled } from "@/lib/api-keys";
 import { getAuthHeaders } from "@/lib/auth-headers";
+import { isMimoVoiceId } from "@/lib/voice-constants";
 
 export interface AudioTask {
   id: string; // unique message id
@@ -31,16 +32,34 @@ class AudioManager {
     // binding if needed
   }
 
-  private async buildTtsHeaders(): Promise<Record<string, string>> {
+  private async buildTtsHeaders(voiceId?: string): Promise<Record<string, string>> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const authHeaders = await getAuthHeaders();
     Object.assign(headers, authHeaders);
+
+    // 检测是否使用 MiMo TTS
+    const useMimo = voiceId ? isMimoVoiceId(voiceId) : false;
+
     if (isCustomKeyEnabled()) {
-      const apiKey = getMinimaxApiKey();
-      const groupId = getMinimaxGroupId();
-      if (apiKey) headers["X-Minimax-Api-Key"] = apiKey;
-      if (groupId) headers["X-Minimax-Group-Id"] = groupId;
+      if (useMimo) {
+        // 使用 MiMo TTS
+        const mimoKey = getMimoApiKey();
+        if (mimoKey) headers["X-Mimo-Api-Key"] = mimoKey;
+      } else {
+        // 使用 MiniMax TTS
+        const apiKey = getMinimaxApiKey();
+        const groupId = getMinimaxGroupId();
+        if (apiKey) headers["X-Minimax-Api-Key"] = apiKey;
+        if (groupId) headers["X-Minimax-Group-Id"] = groupId;
+      }
+    } else {
+      // 非自定义 key 模式，也传递 MiMo key（如果有的话）
+      const mimoKey = getMimoApiKey();
+      if (mimoKey && useMimo) {
+        headers["X-Mimo-Api-Key"] = mimoKey;
+      }
     }
+
     return headers;
   }
 
@@ -108,7 +127,7 @@ class AudioManager {
   }
 
   private async fetchAndCache(task: AudioTask) {
-    const headers = await this.buildTtsHeaders();
+    const headers = await this.buildTtsHeaders(task.voiceId);
 
     const response = await fetch("/api/tts", {
       method: "POST",

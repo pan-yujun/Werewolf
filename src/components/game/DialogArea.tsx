@@ -1657,7 +1657,7 @@ export function DialogArea({
                     )}
                     
                     {/* 对话内容 - 带玩家标签，逐字输入效果，文字调大；流式时也用 * 渲染斜体 */}
-                    <div className="text-xl leading-relaxed text-[var(--text-primary)] flex-1 pr-1 whitespace-pre-wrap break-words">
+                    <div className="text-xl leading-relaxed text-[var(--text-primary)] flex-1 pr-1 whitespace-pre-wrap break-words overflow-y-auto" style={{ maxHeight: "50vh" }}>
                       {isTyping ? (
                         renderStreamingMarkdown(
                           waitingForNextRound ? t("dialog.nextRoundHint") : dialogueText,

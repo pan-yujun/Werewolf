@@ -59,7 +59,7 @@ import { SettingsModal } from "@/components/game/SettingsModal";
 import { buildSimpleAvatarUrl, getModelLogoUrl } from "@/lib/avatar-config";
 import { audioManager, makeAudioTaskId } from "@/lib/audio-manager";
 import { getNarratorPlayer } from "@/lib/narrator-audio-player";
-import { resolveVoiceId, type AppLocale } from "@/lib/voice-constants";
+import { resolveVoiceId, shouldUseMimoTts, type AppLocale } from "@/lib/voice-constants";
 import { getLocale } from "@/i18n/locale-store";
 import { useSettings } from "@/hooks/useSettings";
 import { useTutorial } from "@/hooks/useTutorial";
@@ -230,10 +230,8 @@ export default function Home() {
     document.documentElement.setAttribute("data-theme", visualIsNight ? "dark" : "light");
   }, [visualIsNight]);
 
-  useEffect(() => {
-    if (gameState.phase !== "GAME_END") return;
-    setAiVoiceEnabled(false);
-  }, [gameState.phase, setAiVoiceEnabled]);
+  // 游戏结束时不再强制关闭 AI 语音设置，保留用户偏好
+  // AudioManager 会通过 stopCurrent() 停止当前播放
 
   const handleViewAnalysis = useCallback(() => {
     const basePath = slug ? `/${slug}` : "";
@@ -670,11 +668,13 @@ export default function Home() {
 
     const player = gameState.players.find((p) => p.displayName === currentDialogue.speaker);
     const locale = getLocale() as AppLocale;
+    const useMimo = shouldUseMimoTts();
     const voiceId = resolveVoiceId(
       player?.agentProfile?.persona?.voiceId,
       player?.agentProfile?.persona?.gender,
       player?.agentProfile?.persona?.age,
-      locale
+      locale,
+      useMimo
     );
     const taskId = makeAudioTaskId(voiceId, text);
     const durationMs = audioManager.getCachedDurationMs(taskId);
@@ -1311,7 +1311,7 @@ export default function Home() {
               humanName={humanName}
               setHumanName={setHumanName}
               onStart={(options) => {
-                setAiVoiceEnabled(false);
+                // 保留用户的 AI 语音设置，不再强制关闭
                 startGame({ ...(options ?? {}), isGenshinMode, isSpectatorMode });
               }}
               onAbort={restartGame}

@@ -14,7 +14,7 @@ import { getGeneratorModel, getSelectedModels, hasDashscopeKey, hasZenmuxKey, is
 import { aiLogger } from "./ai-logger";
 import { GAME_TEMPERATURE } from "./ai-config";
 import { getRandomScenario } from "./scenarios";
-import { resolveVoiceId, VOICE_PRESETS, type AppLocale } from "./voice-constants";
+import { resolveVoiceId, shouldUseMimoTts, VOICE_PRESETS, type AppLocale } from "./voice-constants";
 import { getI18n } from "@/i18n/translator";
 import { parseLLMJson } from "./llm-json";
 import { generateBuiltinCharacters, DEFAULT_PLAYER_MIND, DEFAULT_VOICE_RULES } from "./builtin-characters";
@@ -440,13 +440,23 @@ export async function generateCharacters(
     // 动态计算 max_tokens：每个角色约需 300-400 tokens，加上 JSON 结构开销
     const baseMaxTokens = Math.max(2400, count * 350 + 600);
 
-    const baseResult = await generateJSON<unknown>({
+    // 第一阶段超时控制：30秒
+    const BASE_PROFILE_TIMEOUT_MS = 30000;
+    const baseResultPromise = generateJSON<unknown>({
       model: getGeneratorModel(),
       messages: [{ role: "user", content: basePrompt }],
       temperature: GAME_TEMPERATURE.CHARACTER_GENERATION,
       max_tokens: baseMaxTokens,
       reasoning: CHARACTER_GENERATOR_REASONING,
     });
+
+    const baseTimeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error("BASE_PROFILE_TIMEOUT: Base profile generation timeout"));
+      }, BASE_PROFILE_TIMEOUT_MS);
+    });
+
+    const baseResult = await Promise.race([baseResultPromise, baseTimeoutPromise]);
 
     const normalizedBase = normalizeBaseProfiles(baseResult);
     const baseProfiles = normalizedBase.profiles;
@@ -458,15 +468,15 @@ export async function generateCharacters(
     options?.onBaseProfiles?.(baseProfiles);
 
     const fullPrompt = buildFullPersonasPrompt(usedScenario, baseProfiles);
-    
+
     // 使用流式生成，每解析出一个角色就立即调用回调
     const finalizedCharacters: GeneratedCharacter[] = [];
     const emittedIndices = new Set<number>();
     let accumulatedContent = "";
-    
+
     // 完整角色生成需要 persona + playerMind，按更宽预算生成
     const fullMaxTokens = Math.max(9000, count * 1250 + 1800);
-    
+
     const stream = generateCompletionStream({
       model: getGeneratorModel(),
       messages: [{ role: "user", content: fullPrompt }],
@@ -475,7 +485,58 @@ export async function generateCharacters(
       reasoning: CHARACTER_GENERATOR_REASONING,
     });
 
-    for await (const chunk of stream) {
+    // 超时控制：30秒内如果没有收到任何数据，则抛出超时错误
+    const STREAM_TIMEOUT_MS = 30000;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let hasReceivedAnyChunk = false;
+
+    // 创建一个带超时的迭代器
+    const streamWithTimeout = async function* () {
+      const iterator = stream[Symbol.asyncIterator]();
+
+      // 启动总超时计时器
+      const overallTimeout = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          if (!hasReceivedAnyChunk) {
+            reject(new Error("STREAM_TIMEOUT: No data received within 30 seconds"));
+          }
+        }, STREAM_TIMEOUT_MS);
+      });
+
+      try {
+        while (true) {
+          // 创建一个读取下一个 chunk 的 Promise
+          const nextPromise = iterator.next();
+
+          try {
+            // 竞争：看是先读到数据还是先超时
+            const result = await Promise.race([nextPromise, overallTimeout]);
+
+            if (result.done) {
+              break;
+            }
+
+            // 收到数据
+            hasReceivedAnyChunk = true;
+            yield result.value;
+          } catch (error) {
+            if (error instanceof Error && error.message.includes("STREAM_TIMEOUT")) {
+              console.error("[character-gen] Stream timeout: no data received within 30 seconds");
+              throw error;
+            }
+            throw error;
+          }
+        }
+      } finally {
+        // 清理超时计时器
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      }
+    };
+
+    for await (const chunk of streamWithTimeout()) {
       accumulatedContent += chunk;
       
       // 使用正则提取完整的角色对象
@@ -510,11 +571,13 @@ export async function generateCharacters(
             if (isValidPersonaForProfile(filledPersona, profile)) {
               emittedIndices.add(profileIndex);
 
+              const useMimo = shouldUseMimoTts();
               const voiceId = resolveVoiceId(
                 filledPersona.voiceId,
                 filledPersona.gender,
                 filledPersona.age,
-                "zh" as AppLocale
+                "zh" as AppLocale,
+                useMimo
               );
 
               // Fill in missing playerMind fields with defaults
@@ -561,14 +624,16 @@ export async function generateCharacters(
       // 补充未生成的角色
       for (let i = 0; i < alignedCharacters.length; i++) {
         if (finalizedCharacters[i]) continue;
-        
+
         const c = alignedCharacters[i];
         const profile = baseProfiles[i];
+        const useMimo = shouldUseMimoTts();
         const voiceId = resolveVoiceId(
           c.persona.voiceId,
           c.persona.gender,
           c.persona.age,
-          "zh" as AppLocale
+          "zh" as AppLocale,
+          useMimo
         );
 
         const character: GeneratedCharacter = {
@@ -634,7 +699,23 @@ export async function generateCharacters(
         console.error("[character-gen] Custom key quota exhausted, aborting retry");
         throw error;
       }
-      
+
+      // 超时错误直接跳过重试，使用内置角色
+      const isTimeoutError = errorMsg.includes("STREAM_TIMEOUT") || errorMsg.includes("BASE_PROFILE_TIMEOUT") || errorMsg.includes("timeout");
+      if (isTimeoutError) {
+        console.error("[character-gen] Stream timeout detected, skipping retry and using built-in characters");
+        await aiLogger.log({
+          type: "character_generation",
+          request: {
+            model: GENERATOR_MODEL,
+            messages: [{ role: "user", content: "(two-stage generation)" }],
+          },
+          response: { content: "[]", duration: 0 },
+          error: "Stream timeout: no data received within 30 seconds",
+        });
+        return generateBuiltinCharacters(count);
+      }
+
       if (attempt === 0) {
         continue;
       }

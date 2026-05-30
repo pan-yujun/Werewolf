@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
+import { useState, useEffect, useRef } from "react";
 
 interface GameLoadingProgressProps {
   percent: number;
@@ -19,8 +20,42 @@ const STAGE_ICONS: Record<string, string> = {
   complete: "🎉",
 };
 
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}m${secs}s`;
+}
+
 export function GameLoadingProgress({ percent, stage }: GameLoadingProgressProps) {
   const t = useTranslations();
+  const [elapsed, setElapsed] = useState(0);
+  const stageStartTimeRef = useRef<number>(Date.now());
+  const prevStageRef = useRef<string>("");
+
+  // 当阶段变化时重置计时器
+  useEffect(() => {
+    if (stage !== prevStageRef.current) {
+      prevStageRef.current = stage;
+      stageStartTimeRef.current = Date.now();
+      setElapsed(0);
+    }
+  }, [stage]);
+
+  // 每秒更新耗时
+  useEffect(() => {
+    if (!stage || percent <= 0 || percent >= 100) return;
+
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const seconds = Math.floor((now - stageStartTimeRef.current) / 1000);
+      setElapsed(seconds);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [stage, percent]);
 
   if (!stage || percent <= 0) return null;
 
@@ -37,13 +72,16 @@ export function GameLoadingProgress({ percent, stage }: GameLoadingProgressProps
     >
       <div className="max-w-md mx-auto">
         <div className="glass-panel rounded-xl p-4 shadow-2xl border border-[var(--border-color)]">
-          {/* Stage text */}
+          {/* Stage text and elapsed time */}
           <div className="flex items-center gap-2 mb-3">
             <span className="text-lg">{icon}</span>
             <span className="text-sm font-medium text-[var(--text-primary)]">
               {stageText || stage}
             </span>
             <span className="ml-auto text-xs text-[var(--text-muted)]">
+              {formatElapsed(elapsed)}
+            </span>
+            <span className="text-xs text-[var(--text-muted)]">
               {percent}%
             </span>
           </div>

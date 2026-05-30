@@ -61,23 +61,49 @@ export const DEFAULT_VOICE_ID_EN = {
   female: "English_Graceful_Lady",
 };
 
+// MiMo TTS 语音预设
+// MiMo TTS 使用简单的语音标识符
+export const MIMO_VOICE_PRESETS: VoicePreset[] = [
+  // --- 男性音色 ---
+  { id: "male-1", name: "男声1", styles: ["balanced", "default"], gender: "male", minAge: 18, maxAge: 40 },
+  { id: "male-2", name: "男声2", styles: ["calm", "gentle"], gender: "male", minAge: 25, maxAge: 50 },
+  { id: "male-3", name: "男声3", styles: ["aggressive", "strong"], gender: "male", minAge: 30, maxAge: 55 },
+
+  // --- 女性音色 ---
+  { id: "female-1", name: "女声1", styles: ["balanced", "default"], gender: "female", minAge: 18, maxAge: 40 },
+  { id: "female-2", name: "女声2", styles: ["gentle", "soft"], gender: "female", minAge: 20, maxAge: 45 },
+  { id: "female-3", name: "女声3", styles: ["cheerful", "lively"], gender: "female", minAge: 18, maxAge: 35 },
+];
+
+export const MIMO_DEFAULT_VOICE_ID = {
+  male: "male-1",
+  female: "female-1",
+};
+
 /**
  * Resolve voice ID based on input, gender, age, and locale.
  * - For Chinese (zh): Uses VOICE_PRESETS and prioritizes input ID if valid.
  * - For English (en): Always uses ENGLISH_VOICE_PRESETS, ignoring Chinese input IDs.
+ * - If useMimoTts is true, returns MiMo TTS voice IDs instead of MiniMax IDs.
  */
 export function resolveVoiceId(
   input: string | undefined,
   gender: "male" | "female" | "nonbinary" | undefined,
   age?: number,
-  locale: AppLocale = "zh"
+  locale: AppLocale = "zh",
+  useMimoTts: boolean = false
 ): string {
+  // 如果使用 MiMo TTS，直接返回 MiMo 语音 ID
+  if (useMimoTts) {
+    return resolveMimoVoiceId(gender, age);
+  }
+
   const normGender: "male" | "female" = gender === "female" ? "female" : "male";
-  
+
   // Select preset list and defaults based on locale
   const presets = locale === "en" ? ENGLISH_VOICE_PRESETS : VOICE_PRESETS;
   const defaults = locale === "en" ? DEFAULT_VOICE_ID_EN : DEFAULT_VOICE_ID;
-  
+
   // For Chinese locale, check if input ID exists in presets
   if (locale === "zh") {
     const trimmed = (input || "").trim();
@@ -85,10 +111,10 @@ export function resolveVoiceId(
     if (exists) return trimmed;
   }
   // For English locale, we always resolve from English presets (ignore Chinese input ID)
-  
+
   // Filter by gender
   const baseCandidates = presets.filter((p) => p.gender === normGender);
-  
+
   // Filter by age if available
   const hasAge = typeof age === "number" && Number.isFinite(age);
   const ageCandidates = hasAge
@@ -103,4 +129,62 @@ export function resolveVoiceId(
   if (picked) return picked;
 
   return normGender === "female" ? defaults.female : defaults.male;
+}
+
+/**
+ * 检查是否是 MiMo TTS 语音 ID
+ */
+export function isMimoVoiceId(voiceId: string): boolean {
+  return voiceId.startsWith("male-") || voiceId.startsWith("female-");
+}
+
+/**
+ * 检查是否应该使用 MiMo TTS
+ * 通过检查环境变量或 localStorage 中的配置
+ */
+export function shouldUseMimoTts(): boolean {
+  // 检查 NEXT_PUBLIC_USE_MIMO_TTS 环境变量
+  if (process.env.NEXT_PUBLIC_USE_MIMO_TTS === "true") {
+    return true;
+  }
+
+  // 在服务端检查环境变量
+  if (typeof window === "undefined") {
+    return !!process.env.MIMO_API_KEY;
+  }
+
+  // 在客户端检查 localStorage（用户手动配置的 MiMo API Key）
+  try {
+    return !!localStorage.getItem("wolfcha_mimo_api_key");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 解析 MiMo TTS 语音 ID
+ */
+export function resolveMimoVoiceId(
+  gender: "male" | "female" | "nonbinary" | undefined,
+  age?: number
+): string {
+  const normGender: "male" | "female" = gender === "female" ? "female" : "male";
+
+  // Filter by gender
+  const baseCandidates = MIMO_VOICE_PRESETS.filter((p) => p.gender === normGender);
+
+  // Filter by age if available
+  const hasAge = typeof age === "number" && Number.isFinite(age);
+  const ageCandidates = hasAge
+    ? baseCandidates.filter((p) => {
+        const minOk = typeof p.minAge === "number" ? age >= p.minAge : true;
+        const maxOk = typeof p.maxAge === "number" ? age <= p.maxAge : true;
+        return minOk && maxOk;
+      })
+    : baseCandidates;
+
+  const picked = (ageCandidates[0] ?? baseCandidates[0])?.id;
+  if (picked) return picked;
+
+  return normGender === "female" ? MIMO_DEFAULT_VOICE_ID.female : MIMO_DEFAULT_VOICE_ID.male;
 }

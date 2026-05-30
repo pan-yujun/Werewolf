@@ -195,7 +195,8 @@ export function useDialogueManager() {
     const isFirstSegment = queue.segments.length === 0;
     const isCurrentCompleted = queue.completedIndices?.has(queue.currentIndex) ?? false;
     const isAwaitingNext = queue.awaitingNextSegment === true;
-    
+
+    // 记录段落的原始索引，用于后续排序
     queue.segments.push(trimmed);
 
     // 如果这是第一个段落，或者用户正在等待下一段，则立即显示新段落
@@ -217,6 +218,29 @@ export function useDialogueManager() {
   const finalizeSpeechQueue = useCallback((options?: { nextSpeakerIsAI?: boolean }) => {
     const queue = speechQueueRef.current;
     if (!queue) return;
+
+    // 合并所有段落为一条消息
+    if (queue.segments.length > 1) {
+      // 按照添加顺序合并段落（segments 数组已经按顺序添加）
+      const combinedText = queue.segments.join("");
+      queue.segments = [combinedText];
+      queue.currentIndex = 0;
+      queue.completedIndices = new Set();
+
+      // 更新当前对话显示合并后的文本
+      setCurrentDialogue({
+        speaker: queue.player.displayName,
+        text: combinedText,
+        isStreaming: false,
+      });
+    } else if (queue.segments.length === 1) {
+      // 只有一个段落，直接标记为完成
+      setCurrentDialogue({
+        speaker: queue.player.displayName,
+        text: queue.segments[0],
+        isStreaming: false,
+      });
+    }
 
     queue.isStreaming = false;
     queue.isFinalized = true;

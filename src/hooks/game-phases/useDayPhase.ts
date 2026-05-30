@@ -17,7 +17,7 @@ import {
 import { PHASE_CATEGORIES } from "@/lib/game-constants";
 import { type FlowToken } from "@/lib/game-flow-controller";
 import { audioManager, makeAudioTaskId } from "@/lib/audio-manager";
-import { resolveVoiceId, type AppLocale } from "@/lib/voice-constants";
+import { resolveVoiceId, shouldUseMimoTts, type AppLocale } from "@/lib/voice-constants";
 import { getLocale } from "@/i18n/locale-store";
 
 export interface DayPhaseCallbacks {
@@ -226,11 +226,13 @@ export function useDayPhase(
 
     // Get current locale for voice resolution
     const locale = getLocale() as AppLocale;
+    const useMimo = shouldUseMimoTts();
     const voiceId = resolveVoiceId(
       player.agentProfile?.persona?.voiceId,
       player.agentProfile?.persona?.gender,
       player.agentProfile?.persona?.age,
-      locale
+      locale,
+      useMimo
     );
 
     const prefetchCriteria: PrefetchCriteria = {
@@ -339,39 +341,21 @@ export function useDayPhase(
 
           const ttsEnabled = audioManager.isEnabled();
 
+          // 立即将段落添加到发言队列（保持顺序）
           if (!hasReceivedFirstSegment) {
             hasReceivedFirstSegment = true;
-            if (ttsEnabled) {
-              // First segment: wait for TTS to be ready before showing text
-              // so the user sees "organizing" until audio is synthesized
-              audioChain = audioChain.then(() =>
-                audioManager.ensureReady(task).then(() => {
-                  if (isTimedOut) return;
-                  setIsWaitingForAI(false);
-                  appendToSpeechQueue(segment);
-                  audioManager.addToQueue(task);
-                }).catch(() => {
-                  // TTS failed, show text anyway
-                  setIsWaitingForAI(false);
-                  appendToSpeechQueue(segment);
-                })
-              );
-            } else {
-              // No TTS: show text immediately
-              setIsWaitingForAI(false);
-              appendToSpeechQueue(segment);
-            }
-          } else {
-            // Subsequent segments: show text immediately, prefetch in background
-            appendToSpeechQueue(segment);
-            if (ttsEnabled) {
-              // Chain ensures addToQueue runs in segment arrival order
-              audioChain = audioChain.then(() =>
-                audioManager.ensureReady(task).then(() => {
-                  audioManager.addToQueue(task);
-                }).catch(() => {})
-              );
-            }
+            setIsWaitingForAI(false);
+          }
+          appendToSpeechQueue(segment);
+
+          // 异步处理 TTS（不影响段落顺序）
+          if (ttsEnabled) {
+            audioChain = audioChain.then(() =>
+              audioManager.ensureReady(task).then(() => {
+                if (isTimedOut) return;
+                audioManager.addToQueue(task);
+              }).catch(() => {})
+            );
           }
         },
         onComplete: () => {
