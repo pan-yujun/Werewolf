@@ -18,6 +18,7 @@ import {
 } from "@/lib/game-analysis";
 import { gameStatsTracker } from "@/hooks/useGameStats";
 import { getReviewModel } from "@/lib/api-keys";
+import { saveGameToHistory } from "@/lib/game-history-storage";
 
 export function useGameAnalysis() {
   const gameState = useAtomValue(gameStateAtom);
@@ -49,6 +50,7 @@ export function useGameAnalysis() {
       const reviewModel = getReviewModel();
       const data = await generateGameAnalysis(gameState, reviewModel, durationSeconds);
       setAnalysisData(data);
+      saveGameToHistory(data);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "分析生成失败";
       setError(errorMessage);

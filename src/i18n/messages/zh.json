@@ -130,6 +130,7 @@
       "title": "游戏开始",
       "subtitle": "The Game Begins"
     },
+    "gameHistory": "对局记录",
     "roleConfig": {
       "godLabelFull": "预女猎守",
       "godLabelNoGuard": "预女猎",

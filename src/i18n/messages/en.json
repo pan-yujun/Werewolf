@@ -130,6 +130,7 @@
       "title": "Game begins",
       "subtitle": "The Game Begins"
     },
+    "gameHistory": "Game History",
     "roleConfig": {
       "godLabelFull": "Seer/Witch/Hunter/Guard",
       "godLabelNoGuard": "Seer/Witch/Hunter",

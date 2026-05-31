@@ -1,7 +1,8 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { FingerprintSimple, PawPrint, Sparkle, Wrench, GearSix, UserCircle, GithubLogo, Star, EnvelopeSimple, Handshake, DotsThreeOutlineVertical, Users, UsersFour } from "@phosphor-icons/react";
+import { FingerprintSimple, PawPrint, Sparkle, Wrench, GearSix, UserCircle, GithubLogo, Star, EnvelopeSimple, Handshake, DotsThreeOutlineVertical, Users, UsersFour, Scroll } from "@phosphor-icons/react";
+import { useRouter } from "next/navigation";
 import { WerewolfIcon } from "@/components/icons/FlatIcons";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -269,6 +270,7 @@ export function WelcomeScreen({
     springCampaign,
     refreshDemoConfig,
   } = useCredits();
+  const router = useRouter();
   const [isSetupOpen, setIsSetupOpen] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const paperRef = useRef<HTMLDivElement | null>(null);
@@ -1368,6 +1370,16 @@ export function WelcomeScreen({
                 )}
               </button>
             )}
+
+            {/* Game History Button */}
+            <button
+              type="button"
+              onClick={() => router.push("/history")}
+              className="mt-3 mx-auto flex items-center gap-2 px-3 py-1.5 rounded-md border border-[var(--border-color)] text-xs text-[var(--text-secondary)] hover:border-[var(--color-gold)]/40 hover:text-[var(--color-gold)] transition-colors"
+            >
+              <Scroll size={14} />
+              <span>{t("welcome.gameHistory")}</span>
+            </button>
 
             <div className="mt-4 flex flex-col items-center gap-3">
               <div className="wc-seal-hint">

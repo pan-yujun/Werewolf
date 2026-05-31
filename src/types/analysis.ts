@@ -149,3 +149,16 @@ export const RADAR_LABELS_WOLF = [
   "隐匿程度",
   "冲票贡献",
 ] as const;
+
+/** 对局记录索引条目（轻量，用于列表展示） */
+export interface GameHistoryIndexItem {
+  gameId: string;
+  timestamp: number;
+  duration: number;
+  playerCount: number;
+  result: "village_win" | "wolf_win";
+  humanRole: Role;
+  humanName: string;
+  totalScore: number;
+  tags: string[];
+}
