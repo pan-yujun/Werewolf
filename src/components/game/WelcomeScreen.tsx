@@ -1346,8 +1346,8 @@ export function WelcomeScreen({
             </div>
 
 
-            {/* Custom Character Entry */}
-            {user && (
+            {/* Custom Character Entry - 显示条件：登录用户 或 开发模式 */}
+            {(user || process.env.NEXT_PUBLIC_DEV_SKIP_AUTH === "true") && (
               <button
                 type="button"
                 onClick={() => setIsCustomCharacterOpen(true)}
