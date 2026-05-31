@@ -297,8 +297,10 @@ export function WelcomeScreen({
     const openParam = searchParams.get("open");
     if (openParam === "history") {
       setIsHistoryOpen(true);
+      window.history.replaceState(null, "", "/");
     } else if (openParam === "account") {
       setIsAccountPageOpen(true);
+      window.history.replaceState(null, "", "/");
     }
   }, [searchParams]);
   const selectionStorageKey = useMemo(() => {
