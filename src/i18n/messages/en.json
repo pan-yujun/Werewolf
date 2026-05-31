@@ -2266,5 +2266,15 @@
     "players": " players",
     "points": " pts",
     "delete": "Delete record"
+  },
+  "dataMigration": {
+    "description": "Export or import custom characters and game history for backup or migration to another browser.",
+    "currentData": "Current data: {characters} characters, {history} games",
+    "export": "Export",
+    "import": "Import",
+    "exportSuccess": "Exported successfully, {count} items",
+    "importSuccess": "Imported: {imported} items, {skipped} skipped",
+    "importError": "Import failed",
+    "fileReadError": "Failed to read file"
   }
 }

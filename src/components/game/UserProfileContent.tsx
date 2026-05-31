@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { UserCircle, Key, SignOut, ShareNetwork, Copy, CaretDown, Check, ArrowRight, Eye, EyeSlash, CreditCard, Minus, Plus } from "@phosphor-icons/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { UserCircle, Key, SignOut, ShareNetwork, Copy, CaretDown, Check, ArrowRight, Eye, EyeSlash, CreditCard, Minus, Plus, Download, Upload } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +42,7 @@ import {
 } from "@/lib/api-keys";
 import { getModelLogoPath } from "@/lib/model-logo";
 import { supabase } from "@/lib/supabase";
+import { exportData, importData, getDataSummary } from "@/lib/data-migration";
 import { REFERRAL_BONUS_ENABLED, SPRING_CAMPAIGN_ENABLED, REDEMPTION_CODE_ENABLED } from "@/lib/welfare-config";
 import {
   ALL_MODELS,
@@ -124,6 +125,7 @@ export function UserProfileContent({
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [redeemCodeInput, setRedeemCodeInput] = useState("");
   const [isRedeeming, setIsRedeeming] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const profileActionGridClassName = REFERRAL_BONUS_ENABLED
     ? "grid grid-cols-2 gap-2"
     : "grid grid-cols-1 gap-2";
@@ -255,6 +257,36 @@ export function UserProfileContent({
     } finally {
       // no-op — caller handles redirect
     }
+  };
+
+  const dataSummary = useMemo(() => getDataSummary(), []);
+
+  const handleExport = () => {
+    const { count } = exportData();
+    toast(t("dataMigration.exportSuccess", { count }));
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      const result = importData(text);
+      if (result.error) {
+        toast.error(t("dataMigration.importError"), { description: result.error });
+      } else {
+        toast(t("dataMigration.importSuccess", { imported: result.imported, skipped: result.skipped }));
+        // 刷新页面以加载导入的数据
+        window.location.reload();
+      }
+    };
+    reader.onerror = () => {
+      toast.error(t("dataMigration.importError"), { description: t("dataMigration.fileReadError") });
+    };
+    reader.readAsText(file);
+    // 重置 input 以便重复选择同一文件
+    e.target.value = "";
   };
 
   const handleSaveKeys = () => {
@@ -573,6 +605,33 @@ export function UserProfileContent({
             <SignOut size={16} />
             {t("userProfile.actions.signOut")}
           </Button>
+
+          {/* Data Migration */}
+          <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-3 space-y-3">
+            <p className="text-xs text-[var(--text-muted)]">
+              {t("dataMigration.description")}
+            </p>
+            <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+              <span>{t("dataMigration.currentData", { characters: dataSummary.customCharacters, history: dataSummary.gameHistory })}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="outline" onClick={handleExport} className="gap-2">
+                <Download size={16} />
+                {t("dataMigration.export")}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="gap-2">
+                <Upload size={16} />
+                {t("dataMigration.import")}
+              </Button>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleImportFile}
+            />
+          </div>
         </div>
       </TabsContent>
 

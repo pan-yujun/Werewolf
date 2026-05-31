@@ -2348,5 +2348,15 @@
     "players": "人",
     "points": "分",
     "delete": "删除记录"
+  },
+  "dataMigration": {
+    "description": "导出或导入自定义角色与对局记录，用于备份或迁移到其他浏览器。",
+    "currentData": "当前数据：{characters} 个角色，{history} 局记录",
+    "export": "导出",
+    "import": "导入",
+    "exportSuccess": "导出成功，共 {count} 条数据",
+    "importSuccess": "导入成功：{imported} 条已导入，{skipped} 条跳过",
+    "importError": "导入失败",
+    "fileReadError": "文件读取失败"
   }
 }
