@@ -131,6 +131,7 @@
       "subtitle": "The Game Begins"
     },
     "gameHistory": "Game History",
+    "accountButton": "Account",
     "roleConfig": {
       "godLabelFull": "Seer/Witch/Hunter/Guard",
       "godLabelNoGuard": "Seer/Witch/Hunter",
@@ -2252,5 +2253,18 @@
     "recharge": "Buy Game Credits",
     "startGame": "Continue Playing",
     "startGameNoCredits": "Buy Game Credits"
+  },
+  "accountPage": {
+    "title": "Account"
+  },
+  "historyDialog": {
+    "description": "{count} games recorded",
+    "empty": "No game history yet",
+    "emptyHint": "Records are saved automatically after each game",
+    "villageWin": "Village Win",
+    "wolfWin": "Wolf Win",
+    "players": " players",
+    "points": " pts",
+    "delete": "Delete record"
   }
 }

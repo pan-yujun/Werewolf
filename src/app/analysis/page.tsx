@@ -39,7 +39,7 @@ export default function AnalysisPage() {
   }, [gameId]);
 
   const handleReturn = () => {
-    router.push(gameId ? "/history" : "/");
+    router.push(gameId ? "/?open=history" : "/");
   };
 
   // 历史复盘模式（数据已完整，无需 enrich）

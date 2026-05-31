@@ -46,7 +46,7 @@ export function PostGameAnalysisPage({
 
   return (
     <div className="analysis-page min-h-screen pb-24" data-theme="dark">
-      <AnalysisHeader gameId={data.gameId} />
+      <AnalysisHeader gameId={data.gameId} onExit={onReturn} />
 
       <main className="max-w-md lg:max-w-5xl mx-auto px-4 py-8">
         {/* Desktop: Two-column layout / Mobile: Single column */}

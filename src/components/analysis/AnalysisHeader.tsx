@@ -1,17 +1,26 @@
 "use client";
 
-import { Scroll } from "lucide-react";
+import { ArrowLeft, Scroll } from "lucide-react";
 
 interface AnalysisHeaderProps {
   gameId: string;
+  onExit?: () => void;
 }
 
-export function AnalysisHeader({ gameId }: AnalysisHeaderProps) {
+export function AnalysisHeader({ gameId, onExit }: AnalysisHeaderProps) {
   const shortId = gameId.slice(0, 6).toUpperCase();
 
   return (
     <header className="sticky top-0 z-50 bg-[var(--bg-main)]/90 backdrop-blur-md border-b border-[var(--color-gold)]/20 px-5 py-4 flex justify-between items-center shadow-lg">
       <div className="flex items-center gap-3">
+        {onExit && (
+          <button
+            onClick={onExit}
+            className="w-9 h-9 border border-[var(--color-gold)]/30 rounded flex items-center justify-center bg-black/20 hover:bg-white/5 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-[var(--color-gold)]" />
+          </button>
+        )}
         <div className="w-9 h-9 border border-[var(--color-gold)]/30 rounded flex items-center justify-center bg-black/20">
           <Scroll className="w-5 h-5 text-[var(--color-gold)]" />
         </div>

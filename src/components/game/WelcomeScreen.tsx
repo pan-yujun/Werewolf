@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { FingerprintSimple, PawPrint, Sparkle, Wrench, GearSix, UserCircle, GithubLogo, Star, EnvelopeSimple, Handshake, DotsThreeOutlineVertical, Users, UsersFour, Scroll } from "@phosphor-icons/react";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { WerewolfIcon } from "@/components/icons/FlatIcons";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,6 +18,8 @@ import { SharePanel } from "@/components/game/SharePanel";
 import { AccountModal } from "@/components/game/AccountModal";
 import { ResetPasswordModal } from "@/components/game/ResetPasswordModal";
 import { UserProfileModal } from "@/components/game/UserProfileModal";
+import { AccountPageDialog } from "@/components/game/AccountPageDialog";
+import { HistoryDialog } from "@/components/game/HistoryDialog";
 import { LowCreditModal, LOW_CREDIT_THRESHOLD } from "@/components/game/LowCreditModal";
 import { LocaleSwitcher } from "@/components/game/LocaleSwitcher";
 import { CustomCharacterModal } from "@/components/game/CustomCharacterModal";
@@ -270,7 +272,6 @@ export function WelcomeScreen({
     springCampaign,
     refreshDemoConfig,
   } = useCredits();
-  const router = useRouter();
   const [isSetupOpen, setIsSetupOpen] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const paperRef = useRef<HTMLDivElement | null>(null);
@@ -285,9 +286,21 @@ export function WelcomeScreen({
   const [isGroupOpen, setIsGroupOpen] = useState(false);
   const [groupImgOk, setGroupImgOk] = useState<boolean | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAccountPageOpen, setIsAccountPageOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isCustomCharacterOpen, setIsCustomCharacterOpen] = useState(false);
   const [isLowCreditOpen, setIsLowCreditOpen] = useState(false);
   const [userProfileDefaultTab, setUserProfileDefaultTab] = useState<string | undefined>(undefined);
+
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const openParam = searchParams.get("open");
+    if (openParam === "history") {
+      setIsHistoryOpen(true);
+    } else if (openParam === "account") {
+      setIsAccountPageOpen(true);
+    }
+  }, [searchParams]);
   const selectionStorageKey = useMemo(() => {
     return user?.id
       ? `${CUSTOM_CHARACTER_SELECTION_STORAGE_KEY}:${user.id}`
@@ -493,6 +506,8 @@ export function WelcomeScreen({
     isAuthOpen ||
     (REFERRAL_BONUS_ENABLED && isShareOpen) ||
     isAccountOpen ||
+    isAccountPageOpen ||
+    isHistoryOpen ||
     isUserProfileOpen ||
     isSponsorOpen ||
     (SPRING_CAMPAIGN_ENABLED && isSpringFestivalOpen) ||
@@ -796,6 +811,8 @@ export function WelcomeScreen({
         />
         <AuthModal open={isAuthOpen} onOpenChange={setIsAuthOpen} />
         <AccountModal open={isAccountOpen} onOpenChange={setIsAccountOpen} />
+        <AccountPageDialog open={isAccountPageOpen} onOpenChange={setIsAccountPageOpen} />
+        <HistoryDialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen} />
         <UserProfileModal
           open={isUserProfileOpen}
           onOpenChange={(open) => {
@@ -998,33 +1015,18 @@ export function WelcomeScreen({
                 <GearSix size={16} />
                 {t("welcome.settings")}
               </Button>
-              {user ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="justify-start"
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    setIsUserProfileOpen(true);
-                  }}
-                >
-                  <UserCircle size={16} />
-                  {t("welcome.account.info")}
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="justify-start"
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    setIsAuthOpen(true);
-                  }}
-                >
-                  <UserCircle size={16} />
-                  {t("welcome.auth.signIn")}
-                </Button>
-              )}
+              <Button
+                type="button"
+                variant="outline"
+                className="justify-start"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setIsAccountPageOpen(true);
+                }}
+              >
+                <UserCircle size={16} />
+                {t("welcome.accountButton")}
+              </Button>
               <Button asChild variant="outline" className="justify-start">
                 <a
                   href="https://github.com/oil-oil/wolfcha"
@@ -1120,48 +1122,15 @@ export function WelcomeScreen({
               {t("welcome.group.title")}
             </Button>
 
-            {user ? (
-              <button
-                type="button"
-                onClick={() => setIsUserProfileOpen(true)}
-                className="hidden md:flex items-center gap-2 rounded-md border-2 border-[var(--border-color)] bg-[var(--bg-card)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
-                title={t("welcome.account.viewInfo")}
-              >
-                <UserCircle size={16} />
-                <span className="truncate max-w-[160px]">{user.email ?? t("userProfile.loggedIn")}</span>
-                {isCustomKeyEnabled() ? (
-                  <span className="opacity-70">{t("customKey.title")}</span>
-                ) : (
-                  <span className="opacity-70">
-                    {springCampaignActiveNow ? t("welcome.account.tempQuotaShort", { count: effectiveSpringRemainingQuota }) : null}
-                    {springCampaignActiveNow ? " · " : null}
-                    {t("welcome.account.remaining", { count: creditsLoading ? "..." : (credits ?? 0) })}
-                  </span>
-                )}
-              </button>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsAuthOpen(true)}
-                className="h-8 text-xs gap-2"
-              >
-                <UserCircle size={16} />
-                {t("welcome.auth.signIn")}
-              </Button>
-            )}
-
-            {user && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsUserProfileOpen(true)}
-                className="h-8 text-xs gap-2 md:hidden"
-              >
-                <UserCircle size={16} />
-                {t("welcome.account.info")}
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAccountPageOpen(true)}
+              className="h-8 text-xs gap-2"
+            >
+              <UserCircle size={16} />
+              {t("welcome.accountButton")}
+            </Button>
 
             <Button
               type="button"
@@ -1374,7 +1343,7 @@ export function WelcomeScreen({
             {/* Game History Button */}
             <button
               type="button"
-              onClick={() => router.push("/history")}
+              onClick={() => setIsHistoryOpen(true)}
               className="mt-3 mx-auto flex items-center gap-2 px-3 py-1.5 rounded-md border border-[var(--border-color)] text-xs text-[var(--text-secondary)] hover:border-[var(--color-gold)]/40 hover:text-[var(--color-gold)] transition-colors"
             >
               <Scroll size={14} />

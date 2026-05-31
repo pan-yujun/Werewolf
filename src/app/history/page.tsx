@@ -23,6 +23,18 @@ function formatTime(timestamp: number): string {
 
 export default function HistoryPage() {
   const router = useRouter();
+
+  // Redirect to homepage with history dialog open
+  useEffect(() => {
+    router.replace("/?open=history");
+  }, [router]);
+
+  return null;
+}
+
+// Keep the original component for reference (unused)
+function _HistoryPageOriginal() {
+  const router = useRouter();
   const [records, setRecords] = useState<GameHistoryIndexItem[]>([]);
   const [loaded, setLoaded] = useState(false);
 

@@ -131,6 +131,7 @@
       "subtitle": "The Game Begins"
     },
     "gameHistory": "对局记录",
+    "accountButton": "账号",
     "roleConfig": {
       "godLabelFull": "预女猎守",
       "godLabelNoGuard": "预女猎",
@@ -2334,5 +2335,18 @@
     "recharge": "充值游戏额度",
     "startGame": "继续开始游戏",
     "startGameNoCredits": "充值游戏额度"
+  },
+  "accountPage": {
+    "title": "账号信息"
+  },
+  "historyDialog": {
+    "description": "共 {count} 局记录",
+    "empty": "暂无对局记录",
+    "emptyHint": "完成一局游戏后将自动保存",
+    "villageWin": "好人胜",
+    "wolfWin": "狼人胜",
+    "players": "人",
+    "points": "分",
+    "delete": "删除记录"
   }
 }
