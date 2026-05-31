@@ -39,6 +39,7 @@ const MODEL_DISPLAY_NAME_MAP: Array<{ match: RegExp; label: string }> = [
   { match: /bytedance|seed/i, label: "ByteDance" },
   { match: /openai|gpt/i, label: "OpenAI" },
   { match: /kimi|moonshot/i, label: "Kimi" },
+  { match: /mimo/i, label: "Mimo" },
 ];
 
 const CHARACTER_GENERATOR_REASONING = { enabled: false } as const;
