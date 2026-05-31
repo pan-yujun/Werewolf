@@ -26,6 +26,8 @@ export interface DayEvent {
 export interface PlayerSpeech {
   seat: number;
   content: string;
+  fullContent?: string;
+  isHuman?: boolean;
 }
 
 export interface DayPhase {

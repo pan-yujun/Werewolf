@@ -1352,6 +1352,7 @@ export function WelcomeScreen({
                 type="button"
                 onClick={() => setIsCustomCharacterOpen(true)}
                 className="mt-6 mx-auto flex items-center gap-2 px-3 py-1.5 rounded-md border-2 border-dashed border-[var(--border-color)] text-xs text-[var(--text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors"
+                suppressHydrationWarning
               >
                 <UsersFour size={14} />
                 <span>{t("customCharacter.entryButton")}</span>

@@ -135,11 +135,14 @@ function extractSpeechesFromMessages(
     const seat = (player?.seat ?? -1) + 1;
     if (seat <= 0) continue;
 
+    const isHuman = player?.isHuman === true;
     items.push({
       seat,
       content: content.length > MAX_SPEECH_CONTENT_LENGTH
         ? `${content.slice(0, MAX_SPEECH_CONTENT_LENGTH)}...`
         : content,
+      fullContent: isHuman ? undefined : content,
+      isHuman,
     });
 
     if (items.length >= MAX_SPEECH_ITEMS_PER_PHASE) break;
@@ -983,6 +986,28 @@ ${electionText ? `【竞选阶段发言】\n${electionText}\n\n` : ""}${discussi
   return result;
 }
 
+/**
+ * 为 AI 摘要补充完整原始发言和 isHuman 标记
+ */
+function enrichWithRawSpeeches(
+  summaries: PlayerSpeech[],
+  state: GameState,
+  day: number,
+  phases: Phase[]
+): PlayerSpeech[] {
+  const rawSpeeches = extractSpeechesFromMessages(state, { day, phases });
+  const rawMap = new Map(rawSpeeches.map(s => [s.seat, s]));
+
+  return summaries.map(s => {
+    const raw = rawMap.get(s.seat);
+    return {
+      ...s,
+      fullContent: raw?.fullContent,
+      isHuman: raw?.isHuman,
+    };
+  });
+}
+
 function buildTimeline(state: GameState, aiSummaries?: AISpeechSummaryResult): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
 
@@ -1162,10 +1187,13 @@ function buildTimeline(state: GameState, aiSummaries?: AISpeechSummaryResult): T
       const candidateSeats = [...allCandidateSeats].sort((a, b) => a - b);
 
       // Use AI summaries for election speeches if available
-      const electionSpeeches = aiSummaries?.election?.[day] ?? extractSpeechesFromMessages(state, {
+      const rawElectionSpeeches = extractSpeechesFromMessages(state, {
         day,
         phases: ["DAY_BADGE_SPEECH"],
       });
+      const electionSpeeches = aiSummaries?.election?.[day]
+        ? enrichWithRawSpeeches(aiSummaries.election[day], state, day, ["DAY_BADGE_SPEECH"])
+        : rawElectionSpeeches;
 
       // Election phase - 使用原始当选者信息
       const electionSummary = candidateSeats.length > 0
@@ -1196,7 +1224,9 @@ function buildTimeline(state: GameState, aiSummaries?: AISpeechSummaryResult): T
     }
 
     // Discussion phase with per-player speech summaries (prefer AI summaries)
-    const speeches = aiSummaries?.discussion?.[day] ?? extractSpeeches(state, day);
+    const speeches = aiSummaries?.discussion?.[day]
+      ? enrichWithRawSpeeches(aiSummaries.discussion[day], state, day, ["DAY_SPEECH", "DAY_PK_SPEECH", "DAY_LAST_WORDS"])
+      : extractSpeeches(state, day);
     // Use AI-generated day summary if available, otherwise use simple description
     // 如果是最后一天且游戏已结束但没有放逐，显示游戏结果
     const isLastDayGameEnded = day === state.day && state.winner !== null && !dayData?.executed;

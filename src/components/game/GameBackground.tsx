@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
 interface GameBackgroundProps {
@@ -21,6 +22,12 @@ function CornerDeco({ className }: { className: string }) {
 }
 
 export function GameBackground({ isNight, isBlinking = false }: GameBackgroundProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // SSR 时固定用 isNight=false 渲染，避免 hydration mismatch
+  // 挂载后再使用真实值驱动动画
+  const effectiveNight = mounted ? isNight : false;
   const fadeDuration = isBlinking ? 0 : 1.5;
   return (
     <div className="fixed inset-0 -z-10 overflow-hidden">
@@ -28,7 +35,7 @@ export function GameBackground({ isNight, isBlinking = false }: GameBackgroundPr
       <motion.div
         className="absolute inset-0"
         initial={false}
-        animate={{ opacity: isNight ? 0 : 1 }}
+        animate={{ opacity: effectiveNight ? 0 : 1 }}
         transition={{ duration: fadeDuration }}
         style={{
             backgroundColor: "var(--bg-day-main)",
@@ -57,9 +64,9 @@ export function GameBackground({ isNight, isBlinking = false }: GameBackgroundPr
           transform: "translateZ(0)",
         }}
         initial={false}
-        animate={{ opacity: isNight ? 1 : 0 }}
+        animate={{ opacity: effectiveNight ? 1 : 0 }}
         transition={{ duration: fadeDuration }}
-        
+
       />
 
       {/* 夜晚雾气效果 - 参考 waiting-preview.html */}
@@ -74,11 +81,11 @@ export function GameBackground({ isNight, isBlinking = false }: GameBackgroundPr
             willChange: "opacity, transform",
           }}
           initial={false}
-          animate={{ 
-            opacity: isNight ? 0.8 : 0,
-            scale: isNight ? [1, 1.05, 1] : 1,
+          animate={{
+            opacity: effectiveNight ? 0.8 : 0,
+            scale: effectiveNight ? [1, 1.05, 1] : 1,
           }}
-          transition={{ 
+          transition={{
             opacity: { duration: fadeDuration },
             scale: { duration: 10, repeat: Infinity, ease: "easeInOut" }
           }}
@@ -90,7 +97,7 @@ export function GameBackground({ isNight, isBlinking = false }: GameBackgroundPr
         <motion.div
           className="absolute inset-0 pointer-events-none"
           initial={false}
-          animate={{ opacity: isNight ? 0 : 0.3 }}
+          animate={{ opacity: effectiveNight ? 0 : 0.3 }}
           transition={{ duration: fadeDuration }}
         >
           <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-white rounded-full mix-blend-overlay filter blur-3xl opacity-20 animate-pulse" />
@@ -103,14 +110,14 @@ export function GameBackground({ isNight, isBlinking = false }: GameBackgroundPr
         <motion.div
           className="absolute inset-0 pointer-events-none"
           initial={false}
-          animate={{ opacity: isNight ? 0.4 : 0 }}
+          animate={{ opacity: effectiveNight ? 0.4 : 0 }}
           transition={{ duration: fadeDuration }}
         >
-          <div 
+          <div
             className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full filter blur-[100px] animate-pulse"
             style={{ background: "rgba(138, 28, 28, 0.15)" }}
           />
-          <div 
+          <div
             className="absolute bottom-1/4 right-1/3 w-64 h-64 rounded-full filter blur-[80px] animate-pulse"
             style={{ background: "rgba(197, 160, 89, 0.08)", animationDelay: "2s" }}
           />
@@ -120,7 +127,7 @@ export function GameBackground({ isNight, isBlinking = false }: GameBackgroundPr
       {/* 装饰角纹 - 参考 style-unification-preview.html */}
       <motion.div
         initial={false}
-        animate={{ opacity: isNight ? 0.3 : 0.15 }}
+        animate={{ opacity: effectiveNight ? 0.3 : 0.15 }}
         transition={{ duration: fadeDuration }}
       >
         <CornerDeco className="wc-corner-deco--tl" />

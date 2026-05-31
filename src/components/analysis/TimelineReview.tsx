@@ -275,6 +275,35 @@ function DayEventItem({ event, onShowVotes }: { event: DayEvent; onShowVotes?: (
   );
 }
 
+function SpeechItem({ speech }: { speech: PlayerSpeech }) {
+  const [showFull, setShowFull] = useState(false);
+  const hasFull = !!speech.fullContent && speech.fullContent !== speech.content;
+
+  return (
+    <div className="bg-white/5 rounded-lg p-2.5 text-xs">
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-[var(--color-gold)] font-bold">
+          {speech.seat}号
+        </span>
+        {!speech.isHuman && (
+          <span className="text-[10px] text-[var(--text-muted)] bg-white/5 px-1.5 py-0.5 rounded">AI</span>
+        )}
+      </div>
+      <p className="text-[var(--text-secondary)] leading-relaxed">
+        {hasFull && showFull ? speech.fullContent : speech.content}
+      </p>
+      {hasFull && (
+        <button
+          onClick={() => setShowFull(!showFull)}
+          className="mt-1.5 text-[10px] text-[var(--color-gold)]/60 hover:text-[var(--color-gold)] transition-colors"
+        >
+          {showFull ? "收起" : "展开全文"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function SpeechesSection({ speeches }: { speeches?: PlayerSpeech[] }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -300,19 +329,7 @@ function SpeechesSection({ speeches }: { speeches?: PlayerSpeech[] }) {
       {isExpanded && (
         <div className="mt-3 space-y-2.5">
           {speeches.map((speech, idx) => (
-            <div
-              key={idx}
-              className="bg-white/5 rounded-lg p-2.5 text-xs"
-            >
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-[var(--color-gold)] font-bold">
-                  {speech.seat}号
-                </span>
-              </div>
-              <p className="text-[var(--text-secondary)] leading-relaxed">
-                {speech.content}
-              </p>
-            </div>
+            <SpeechItem key={idx} speech={speech} />
           ))}
         </div>
       )}
