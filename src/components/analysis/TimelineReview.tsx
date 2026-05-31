@@ -3,13 +3,16 @@
 import { useState } from "react";
 import Image from "next/image";
 import { Eye, Gavel, Star, Shield, Skull, Heart, Droplets, ChevronDown, ChevronUp, MessageSquare, Vote, X, Crown, Swords, Crosshair, Bomb, ShieldAlert } from "lucide-react";
-import type { TimelineEntry, PlayerSpeech, DayEvent, DayPhase, VoteRecord } from "@/types/analysis";
+import type { TimelineEntry, PlayerSpeech, DayEvent, DayPhase, VoteRecord, EnrichmentState, EnrichmentType } from "@/types/analysis";
 import { ROLE_ICONS, NIGHT_EVENT_COLORS } from "./constants";
+import { AnalysisButton } from "./AnalysisButton";
 
 interface TimelineReviewProps {
   timeline: TimelineEntry[];
   selectedDay?: number;
   sheriffSeat?: number;
+  enrichmentState?: EnrichmentState;
+  onEnrich?: (type: EnrichmentType) => void;
 }
 
 const NIGHT_ACTION_LABELS: Record<string, string> = {
@@ -304,8 +307,8 @@ function SpeechItem({ speech }: { speech: PlayerSpeech }) {
   );
 }
 
-function SpeechesSection({ speeches }: { speeches?: PlayerSpeech[] }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+function SpeechesSection({ speeches, defaultExpanded }: { speeches?: PlayerSpeech[]; defaultExpanded?: boolean }) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded ?? false);
 
   if (!speeches || speeches.length === 0) return null;
 
@@ -343,14 +346,16 @@ const PHASE_LABELS: Record<string, { label: string; icon: typeof Crown }> = {
   pk: { label: "PK阶段", icon: Swords },
 };
 
-function DayPhaseCard({ 
-  phase, 
+function DayPhaseCard({
+  phase,
   day,
-  onShowVotes 
-}: { 
-  phase: DayPhase; 
+  onShowVotes,
+  speechesDefaultExpanded,
+}: {
+  phase: DayPhase;
   day: number;
   onShowVotes: (votes: VoteRecord[], title: string, isBadgeVote?: boolean) => void;
+  speechesDefaultExpanded?: boolean;
 }) {
   const phaseInfo = PHASE_LABELS[phase.type];
   const PhaseIcon = phaseInfo.icon;
@@ -402,12 +407,15 @@ function DayPhaseCard({
         />
       )}
       
-      <SpeechesSection speeches={phase.speeches} />
+      <SpeechesSection speeches={phase.speeches} defaultExpanded={speechesDefaultExpanded} />
     </div>
   );
 }
 
-export function TimelineReview({ timeline, selectedDay, sheriffSeat }: TimelineReviewProps) {
+export function TimelineReview({ timeline, selectedDay, sheriffSeat, enrichmentState, onEnrich }: TimelineReviewProps) {
+  const speechesLoaded = enrichmentState?.speeches?.loaded ?? true;
+  // AI 分析未加载时，发言详情默认展开（直接展示完整发言）
+  const speechesDefaultExpanded = !speechesLoaded;
   const [voteModal, setVoteModal] = useState<{ isOpen: boolean; votes?: VoteRecord[]; title: string; isBadgeVote?: boolean }>({
     isOpen: false,
     title: "",
@@ -465,11 +473,12 @@ export function TimelineReview({ timeline, selectedDay, sheriffSeat }: TimelineR
                   </div>
                 </div>
                 {entry.dayPhases.map((phase, phaseIdx) => (
-                  <DayPhaseCard 
-                    key={phaseIdx} 
-                    phase={phase} 
+                  <DayPhaseCard
+                    key={phaseIdx}
+                    phase={phase}
                     day={entry.day}
                     onShowVotes={handleShowVotes}
+                    speechesDefaultExpanded={speechesDefaultExpanded}
                   />
                 ))}
               </div>
@@ -500,7 +509,7 @@ export function TimelineReview({ timeline, selectedDay, sheriffSeat }: TimelineR
                       }}
                     />
                   ))}
-                  <SpeechesSection speeches={entry.speeches} />
+                  <SpeechesSection speeches={entry.speeches} defaultExpanded={speechesDefaultExpanded} />
                 </div>
               </div>
             )}
@@ -508,7 +517,19 @@ export function TimelineReview({ timeline, selectedDay, sheriffSeat }: TimelineR
         ))}
       </div>
 
-      <VoteModal 
+      {/* AI 分析发言按钮 */}
+      {!speechesLoaded && onEnrich && (
+        <div className="flex justify-center mt-6">
+          <AnalysisButton
+            label="AI 分析发言"
+            loading={enrichmentState?.speeches?.loading}
+            error={enrichmentState?.speeches?.error}
+            onClick={() => onEnrich("speeches")}
+          />
+        </div>
+      )}
+
+      <VoteModal
         isOpen={voteModal.isOpen}
         onClose={() => setVoteModal({ isOpen: false, title: "" })}
         votes={voteModal.votes}

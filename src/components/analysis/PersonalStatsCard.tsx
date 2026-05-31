@@ -3,15 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Scroll, Quote, ThumbsUp, Brain, X, ChevronDown, ChevronUp } from "lucide-react";
 import Image from "next/image";
-import type { PersonalStats } from "@/types/analysis";
+import type { PersonalStats, EnrichmentState, EnrichmentType } from "@/types/analysis";
 import { RADAR_LABELS_VILLAGE, RADAR_LABELS_WOLF } from "@/types/analysis";
 import { TAG_ILLUSTRATIONS, TAG_CONDITIONS, ALL_TAGS } from "./constants";
+import { AnalysisButton } from "./AnalysisButton";
 
 
 interface PersonalStatsCardProps {
   stats: PersonalStats;
   overrideTag?: string | null;
   onOverrideTagChange?: (tag: string | null) => void;
+  enrichmentState?: EnrichmentState;
+  onEnrich?: (type: EnrichmentType) => void;
 }
 
 interface TitleSelectorModalProps {
@@ -83,7 +86,8 @@ function TitleSelectorModal({ isOpen, onClose, currentTag, onSelectTag }: TitleS
   );
 }
 
-export function PersonalStatsCard({ stats, overrideTag, onOverrideTagChange }: PersonalStatsCardProps) {
+export function PersonalStatsCard({ stats, overrideTag, onOverrideTagChange, enrichmentState, onEnrich }: PersonalStatsCardProps) {
+  const scoresLoaded = enrichmentState?.speechScores?.loaded ?? true;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showTitleSelector, setShowTitleSelector] = useState(false);
 
@@ -291,6 +295,18 @@ export function PersonalStatsCard({ stats, overrideTag, onOverrideTagChange }: P
           </span>
         </div>
       </div>
+
+      {/* AI 分析评分按钮 */}
+      {!scoresLoaded && onEnrich && (
+        <div className="flex justify-center">
+          <AnalysisButton
+            label="AI 分析评分"
+            loading={enrichmentState?.speechScores?.loading}
+            error={enrichmentState?.speechScores?.error}
+            onClick={() => onEnrich("speechScores")}
+          />
+        </div>
+      )}
     </section>
   );
 }

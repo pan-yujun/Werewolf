@@ -12,13 +12,11 @@ export default function AnalysisPage() {
   const searchParams = useSearchParams();
   const gameId = searchParams.get("gameId");
 
-  // 历史复盘模式：从 localStorage 加载指定 gameId 的数据
   const [historyData, setHistoryData] = useState<GameAnalysisData | null>(null);
   const [historyLoading, setHistoryLoading] = useState(!!gameId);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
-  // 当前游戏复盘模式：从 atom 读取
-  const { analysisData, isLoading, error, triggerAnalysis } = useGameAnalysis();
+  const { analysisData, enrichmentState, enrichAnalysis } = useGameAnalysis();
 
   useEffect(() => {
     if (!gameId) return;
@@ -41,7 +39,6 @@ export default function AnalysisPage() {
     router.push(gameId ? "/history" : "/");
   };
 
-  // 历史复盘模式
   if (gameId) {
     if (historyLoading) {
       return (
@@ -78,42 +75,6 @@ export default function AnalysisPage() {
     );
   }
 
-  // 当前游戏复盘模式（原有逻辑）
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-[var(--color-gold)]/30 border-t-[var(--color-gold)] rounded-full mx-auto mb-4" />
-          <p className="text-[var(--text-secondary)]">正在生成复盘分析...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error && !analysisData) {
-    return (
-      <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
-        <div className="text-center max-w-sm mx-auto px-4">
-          <p className="text-red-400 text-sm mb-4">分析生成失败: {error}</p>
-          <div className="flex gap-3 justify-center">
-            <button
-              onClick={() => triggerAnalysis()}
-              className="px-5 py-2.5 rounded-lg text-sm font-bold bg-[var(--color-gold)] text-black hover:bg-[var(--color-gold)]/90 transition-colors"
-            >
-              重试
-            </button>
-            <button
-              onClick={handleReturn}
-              className="px-5 py-2.5 rounded-lg text-sm border border-[var(--color-gold)]/20 text-[var(--text-secondary)] hover:bg-white/5 transition-colors"
-            >
-              返回
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (!analysisData) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
@@ -134,6 +95,8 @@ export default function AnalysisPage() {
     <PostGameAnalysisPage
       data={analysisData}
       onReturn={handleReturn}
+      enrichmentState={enrichmentState}
+      onEnrich={enrichAnalysis}
     />
   );
 }

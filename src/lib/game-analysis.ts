@@ -118,9 +118,9 @@ interface EvaluationTagRule {
 
 function extractSpeechesFromMessages(
   state: GameState,
-  options: { day: number; phases: Phase[] }
+  options: { day: number; phases: Phase[]; truncate?: boolean }
 ): PlayerSpeech[] {
-  const { day, phases } = options;
+  const { day, phases, truncate = false } = options;
   const phaseSet = new Set(phases);
 
   const items: PlayerSpeech[] = [];
@@ -136,16 +136,13 @@ function extractSpeechesFromMessages(
     if (seat <= 0) continue;
 
     const isHuman = player?.isHuman === true;
+    const truncated = truncate && content.length > MAX_SPEECH_CONTENT_LENGTH;
     items.push({
       seat,
-      content: content.length > MAX_SPEECH_CONTENT_LENGTH
-        ? `${content.slice(0, MAX_SPEECH_CONTENT_LENGTH)}...`
-        : content,
-      fullContent: isHuman ? undefined : content,
+      content: truncated ? `${content.slice(0, MAX_SPEECH_CONTENT_LENGTH)}...` : content,
+      fullContent: truncated ? content : undefined,
       isHuman,
     });
-
-    if (items.length >= MAX_SPEECH_ITEMS_PER_PHASE) break;
   }
 
   return items;
@@ -866,7 +863,7 @@ interface AISpeechSummaryResult {
   daySummaries: Record<number, string>;
 }
 
-async function generateAISpeechSummaries(
+export async function generateAISpeechSummaries(
   state: GameState,
   model: string
 ): Promise<AISpeechSummaryResult> {
@@ -1000,9 +997,10 @@ function enrichWithRawSpeeches(
 
   return summaries.map(s => {
     const raw = rawMap.get(s.seat);
+    // AI 摘要模式：content 是 AI 摘要，fullContent 是原始完整发言
     return {
       ...s,
-      fullContent: raw?.fullContent,
+      fullContent: raw?.content,
       isHuman: raw?.isHuman,
     };
   });
@@ -1490,7 +1488,105 @@ export async function generateGameAnalysis(
   };
 }
 
-interface AIAnalysisResult {
+/**
+ * 生成基础分析数据（纯计算，无 LLM 调用）
+ * 用于游戏结束后立即展示，AI 相关内容后续按需加载
+ */
+export function generateBasicGameAnalysis(
+  state: GameState,
+  durationSeconds?: number
+): GameAnalysisData {
+  const humanPlayer = state.players.find(p => p.isHuman) || state.players.find(p => p.seat === 0);
+  if (!humanPlayer) {
+    throw new Error("No player found in game state");
+  }
+
+  const snapshots = buildPlayerSnapshots(state);
+  const roundStates = buildRoundStates(state, snapshots);
+  const ctx = buildAnalysisContext(humanPlayer, state);
+
+  // 使用原始消息作为发言（无 AI 摘要）
+  const timeline = buildTimeline(state);
+  const tags = evaluateTag(humanPlayer, state, ctx);
+  const fallbackAIData = generateFallbackAIData(state, humanPlayer);
+
+  const baseRadarStats = calculateRadarStats(humanPlayer, state, ctx);
+  const totalScore = calculateTotalScore(baseRadarStats);
+
+  const personalStats: PersonalStats = {
+    role: humanPlayer.role,
+    userName: humanPlayer.displayName,
+    avatar: humanPlayer.avatarSeed || humanPlayer.displayName,
+    alignment: ROLE_ALIGNMENT[humanPlayer.role],
+    tags,
+    radarStats: baseRadarStats,
+    highlightQuote: "",
+    totalScore,
+  };
+
+  return {
+    gameId: state.gameId,
+    analysisVersion: GAME_ANALYSIS_VERSION,
+    sourceFingerprint: getGameAnalysisSourceFingerprint(state),
+    timestamp: Date.now(),
+    duration: durationSeconds ?? 0,
+    playerCount: state.players.length,
+    result: state.winner === "wolf" ? "wolf_win" : "village_win",
+    awards: fallbackAIData.awards,
+    timeline,
+    players: snapshots,
+    roundStates,
+    personalStats,
+    reviews: fallbackAIData.reviews,
+  };
+}
+
+/** AI enrich 返回结果 */
+export interface EnrichResult {
+  awards?: GameAnalysisData["awards"];
+  reviews?: PlayerReview[];
+  speechScores?: { logic: number; clarity: number };
+  highlightQuote?: string;
+  speeches?: { timeline: TimelineEntry[] };
+}
+
+/**
+ * 按需 AI 分析：根据 type 调用对应 LLM 函数并返回结果
+ */
+export async function enrichAnalysisWithAI(
+  type: "awards" | "reviews" | "speechScores" | "speeches",
+  state: GameState,
+  model?: string
+): Promise<EnrichResult> {
+  const resolvedModel = model || getSummaryModel();
+  const humanPlayer = state.players.find(p => p.isHuman) || state.players.find(p => p.seat === 0);
+  if (!humanPlayer) throw new Error("No player found in game state");
+
+  if (type === "speeches") {
+    const aiSummaries = await generateAISpeechSummaries(state, resolvedModel);
+    const enrichedTimeline = buildTimeline(state, aiSummaries);
+    return { speeches: { timeline: enrichedTimeline } };
+  }
+
+  // awards / reviews / speechScores 都来自同一个 LLM 调用
+  const aiData = await generateAIAnalysisData(state, humanPlayer, resolvedModel);
+  const result: EnrichResult = {};
+
+  if (type === "awards") {
+    result.awards = aiData.awards;
+  }
+  if (type === "reviews") {
+    result.reviews = aiData.reviews;
+  }
+  if (type === "speechScores") {
+    result.speechScores = aiData.speechScores;
+    result.highlightQuote = aiData.highlightQuote;
+  }
+
+  return result;
+}
+
+export interface AIAnalysisResult {
   awards: {
     mvp: PlayerAward;
     svp: PlayerAward;
@@ -1503,7 +1599,7 @@ interface AIAnalysisResult {
   };
 }
 
-async function generateAIAnalysisData(
+export async function generateAIAnalysisData(
   state: GameState,
   humanPlayer: Player,
   model: string

@@ -1,13 +1,16 @@
 "use client";
 
-import { Crown, Scroll } from "lucide-react";
-import type { GameAnalysisData } from "@/types/analysis";
+import { Crown } from "lucide-react";
+import type { GameAnalysisData, EnrichmentState, EnrichmentType } from "@/types/analysis";
 import { ROLE_SHORT } from "./constants";
 import { buildSimpleAvatarUrl } from "@/lib/avatar-config";
+import { AnalysisButton } from "./AnalysisButton";
 
 interface OverviewCardProps {
   data: GameAnalysisData;
   onSelectPlayer?: (playerId: string) => void;
+  enrichmentState?: EnrichmentState;
+  onEnrich?: (type: EnrichmentType) => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -29,9 +32,10 @@ function PlayerAvatar({ seed, size = 96 }: { seed: string; size?: number }) {
   );
 }
 
-export function OverviewCard({ data, onSelectPlayer }: OverviewCardProps) {
+export function OverviewCard({ data, onSelectPlayer, enrichmentState, onEnrich }: OverviewCardProps) {
   const isVillageWin = data.result === "village_win";
   const { personalStats, awards } = data;
+  const awardsLoaded = enrichmentState?.awards?.loaded ?? true; // 无 enrichmentState 时视为已加载（历史模式）
 
   return (
     <div className="space-y-6">
@@ -52,8 +56,8 @@ export function OverviewCard({ data, onSelectPlayer }: OverviewCardProps) {
               <PlayerAvatar seed={personalStats.avatar} />
             </div>
             <div className={`absolute -bottom-1 -right-1 w-7 h-7 rounded-full border-2 shadow-lg flex items-center justify-center ${
-              personalStats.alignment === "wolf" 
-                ? "bg-[var(--color-blood)]/90 border-[var(--color-blood)] text-white" 
+              personalStats.alignment === "wolf"
+                ? "bg-[var(--color-blood)]/90 border-[var(--color-blood)] text-white"
                 : "bg-[var(--bg-card)] border-[var(--color-gold)]/40 text-[var(--color-gold)]"
             }`}>
               <span className="text-xs font-bold">{ROLE_SHORT[personalStats.role]}</span>
@@ -78,7 +82,7 @@ export function OverviewCard({ data, onSelectPlayer }: OverviewCardProps) {
         {/* MVP */}
         <button
           type="button"
-          onClick={() => onSelectPlayer?.(awards.mvp.playerId)}
+          onClick={() => awardsLoaded && onSelectPlayer?.(awards.mvp.playerId)}
           className="analysis-card rounded-lg p-4 flex flex-col items-center overflow-hidden group relative cursor-pointer hover:bg-white/5 transition-colors text-left"
         >
           <div className="absolute -top-6 -right-6 w-12 h-12 bg-[var(--color-gold)]/20 blur-xl rounded-full" />
@@ -102,7 +106,7 @@ export function OverviewCard({ data, onSelectPlayer }: OverviewCardProps) {
         {/* SVP */}
         <button
           type="button"
-          onClick={() => onSelectPlayer?.(awards.svp.playerId)}
+          onClick={() => awardsLoaded && onSelectPlayer?.(awards.svp.playerId)}
           className="analysis-card rounded-lg p-4 flex flex-col items-center grayscale hover:grayscale-0 transition-all duration-500 relative cursor-pointer hover:bg-white/5 text-left"
         >
           <div className="w-12 h-12 rounded-full border border-white/10 mb-3 bg-black/20 p-0.5 opacity-70">
@@ -119,6 +123,18 @@ export function OverviewCard({ data, onSelectPlayer }: OverviewCardProps) {
           </div>
         </button>
       </section>
+
+      {/* AI 分析按钮 */}
+      {!awardsLoaded && onEnrich && (
+        <div className="flex justify-center">
+          <AnalysisButton
+            label="AI 分析 MVP"
+            loading={enrichmentState?.awards?.loading}
+            error={enrichmentState?.awards?.error}
+            onClick={() => onEnrich("awards")}
+          />
+        </div>
+      )}
     </div>
   );
 }

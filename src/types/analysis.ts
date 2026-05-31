@@ -162,3 +162,21 @@ export interface GameHistoryIndexItem {
   totalScore: number;
   tags: string[];
 }
+
+/** AI 按需分析模块类型 */
+export type EnrichmentType = "awards" | "reviews" | "speechScores" | "speeches";
+
+/** 单个分析模块的状态 */
+export interface EnrichmentItemState {
+  loading: boolean;
+  loaded: boolean;
+  error?: string;
+}
+
+/** 所有分析模块的状态 */
+export type EnrichmentState = Record<EnrichmentType, EnrichmentItemState>;
+
+export function createInitialEnrichmentState(): EnrichmentState {
+  const idle: EnrichmentItemState = { loading: false, loaded: false };
+  return { awards: { ...idle }, reviews: { ...idle }, speechScores: { ...idle }, speeches: { ...idle } };
+}

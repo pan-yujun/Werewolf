@@ -1,13 +1,16 @@
 "use client";
 
 import Image from "next/image";
-import type { PlayerReview } from "@/types/analysis";
+import type { PlayerReview, EnrichmentState, EnrichmentType } from "@/types/analysis";
 import { ROLE_ICONS, ROLE_NAMES } from "./constants";
 import { buildSimpleAvatarUrl } from "@/lib/avatar-config";
+import { AnalysisButton } from "./AnalysisButton";
 
 interface PlayerReviewsProps {
   reviews: PlayerReview[];
   onSelectPlayer?: (playerId: string) => void;
+  enrichmentState?: EnrichmentState;
+  onEnrich?: (type: EnrichmentType) => void;
 }
 
 function ReviewCard({ review, onClick }: { review: PlayerReview; onClick?: () => void }) {
@@ -63,8 +66,8 @@ function ReviewCard({ review, onClick }: { review: PlayerReview; onClick?: () =>
   );
 }
 
-export function PlayerReviews({ reviews, onSelectPlayer }: PlayerReviewsProps) {
-  if (!reviews || reviews.length === 0) return null;
+export function PlayerReviews({ reviews, onSelectPlayer, enrichmentState, onEnrich }: PlayerReviewsProps) {
+  const reviewsLoaded = enrichmentState?.reviews?.loaded ?? true;
 
   return (
     <section>
@@ -72,15 +75,29 @@ export function PlayerReviews({ reviews, onSelectPlayer }: PlayerReviewsProps) {
         选手评价
       </h3>
 
-      <div className="flex flex-col gap-4">
-        {reviews.map((review, idx) => (
-          <ReviewCard
-            key={idx}
-            review={review}
-            onClick={() => onSelectPlayer?.(review.fromPlayerId)}
-          />
-        ))}
-      </div>
+      {!reviewsLoaded ? (
+        <div className="flex flex-col items-center gap-3 py-8">
+          <p className="text-xs text-[var(--text-muted)]">AI 可以为你生成选手评价</p>
+          {onEnrich && (
+            <AnalysisButton
+              label="AI 分析评价"
+              loading={enrichmentState?.reviews?.loading}
+              error={enrichmentState?.reviews?.error}
+              onClick={() => onEnrich("reviews")}
+            />
+          )}
+        </div>
+      ) : reviews.length > 0 ? (
+        <div className="flex flex-col gap-4">
+          {reviews.map((review, idx) => (
+            <ReviewCard
+              key={idx}
+              review={review}
+              onClick={() => onSelectPlayer?.(review.fromPlayerId)}
+            />
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

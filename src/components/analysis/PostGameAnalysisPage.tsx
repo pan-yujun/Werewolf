@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { GameAnalysisData } from "@/types/analysis";
+import type { GameAnalysisData, EnrichmentState, EnrichmentType } from "@/types/analysis";
 import { AnalysisHeader } from "./AnalysisHeader";
 import { OverviewCard } from "./OverviewCard";
 import { PersonalStatsCard } from "./PersonalStatsCard";
@@ -16,11 +16,15 @@ import type { PlayerSnapshot } from "@/types/analysis";
 interface PostGameAnalysisPageProps {
   data: GameAnalysisData;
   onReturn?: () => void;
+  enrichmentState?: EnrichmentState;
+  onEnrich?: (type: EnrichmentType) => void;
 }
 
 export function PostGameAnalysisPage({
   data,
   onReturn,
+  enrichmentState,
+  onEnrich,
 }: PostGameAnalysisPageProps) {
   const [selectedRoundIndex, setSelectedRoundIndex] = useState(0);
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerSnapshot | null>(null);
@@ -49,10 +53,26 @@ export function PostGameAnalysisPage({
         <div className="lg:grid lg:grid-cols-12 lg:gap-8">
           {/* Left Column - Overview & Personal Stats */}
           <div className="lg:col-span-5 space-y-8">
-            <OverviewCard data={data} onSelectPlayer={openPlayerDetail} />
-            <PersonalStatsCard stats={data.personalStats} overrideTag={overrideTag} onOverrideTagChange={setOverrideTag} />
+            <OverviewCard
+              data={data}
+              onSelectPlayer={openPlayerDetail}
+              enrichmentState={enrichmentState}
+              onEnrich={onEnrich}
+            />
+            <PersonalStatsCard
+              stats={data.personalStats}
+              overrideTag={overrideTag}
+              onOverrideTagChange={setOverrideTag}
+              enrichmentState={enrichmentState}
+              onEnrich={onEnrich}
+            />
             <div className="hidden lg:block">
-              <PlayerReviews reviews={data.reviews} onSelectPlayer={openPlayerDetail} />
+              <PlayerReviews
+                reviews={data.reviews}
+                onSelectPlayer={openPlayerDetail}
+                enrichmentState={enrichmentState}
+                onEnrich={onEnrich}
+              />
               <div className="mt-8">
                 <AnalysisFooter onShare={handleShare} onReturn={onReturn} />
               </div>
@@ -75,11 +95,18 @@ export function PostGameAnalysisPage({
               timeline={data.timeline}
               selectedDay={selectedDay}
               sheriffSeat={sheriffSeat !== undefined ? sheriffSeat + 1 : undefined}
+              enrichmentState={enrichmentState}
+              onEnrich={onEnrich}
             />
 
             {/* Mobile only: Reviews & Footer */}
             <div className="lg:hidden space-y-8">
-              <PlayerReviews reviews={data.reviews} onSelectPlayer={openPlayerDetail} />
+              <PlayerReviews
+                reviews={data.reviews}
+                onSelectPlayer={openPlayerDetail}
+                enrichmentState={enrichmentState}
+                onEnrich={onEnrich}
+              />
               <AnalysisFooter onShare={handleShare} onReturn={onReturn} />
             </div>
           </div>

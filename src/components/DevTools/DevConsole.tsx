@@ -1095,7 +1095,7 @@ function GlobalTab({
   const router = useRouter();
   const phaseNames = usePhaseNames();
   const formatPlayerLabel = useFormatPlayerLabel();
-  const { triggerAnalysis, isLoading: isAnalysisLoading } = useGameAnalysis();
+  const { triggerBasicAnalysis } = useGameAnalysis();
   const actionDays = useMemo(() => {
     const days = new Set<number>();
     Object.keys(gameState.nightHistory || {}).forEach((d) => days.add(Number(d)));
@@ -1258,12 +1258,11 @@ function GlobalTab({
         {gameState.phase === "GAME_END" && (
           <>
             <button
-              onClick={() => triggerAnalysis()}
-              disabled={isAnalysisLoading}
+              onClick={() => triggerBasicAnalysis()}
               className="w-full mt-3 px-4 py-2 rounded font-medium text-sm flex items-center justify-center gap-2 transition-colors bg-orange-600 hover:bg-orange-500 text-white disabled:opacity-50"
             >
               <Lightning size={18} weight="fill" />
-              {isAnalysisLoading ? "重新生成中..." : "重新生成复盘数据"}
+              重新生成复盘数据
             </button>
             <div className="mt-2 text-xs text-gray-400">
               从当前游戏状态重新生成复盘分析数据
