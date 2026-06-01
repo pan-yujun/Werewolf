@@ -26,7 +26,7 @@ import { CustomCharacterModal } from "@/components/game/CustomCharacterModal";
 import { useCustomCharacters } from "@/hooks/useCustomCharacters";
 import { useCredits } from "@/hooks/useCredits";
 import { difficultyAtom, playerCountAtom, preferredRoleAtom } from "@/store/settings";
-import { hasDashscopeKey, hasZenmuxKey, isCustomKeyEnabled } from "@/lib/api-keys";
+import { hasDashscopeKey, hasMimoKey, hasModelscopeKey, hasZenmuxKey, isCustomKeyEnabled } from "@/lib/api-keys";
 import { useAppLocale } from "@/i18n/useAppLocale";
 import {
   SPRING_CAMPAIGN_CODE,
@@ -636,7 +636,7 @@ export function WelcomeScreen({
       return;
     }
 
-    const hasUserKey = isCustomKeyEnabled() && (hasZenmuxKey() || hasDashscopeKey());
+    const hasUserKey = isCustomKeyEnabled() && (hasZenmuxKey() || hasDashscopeKey() || hasMimoKey() || hasModelscopeKey());
 
     if (
       !demoModeActive &&
@@ -745,7 +745,7 @@ export function WelcomeScreen({
     }, 800);
 
     const latestDemoConfig = await refreshDemoConfig(true);
-    const hasUserKey = isCustomKeyEnabled() && (hasZenmuxKey() || hasDashscopeKey());
+    const hasUserKey = isCustomKeyEnabled() && (hasZenmuxKey() || hasDashscopeKey() || hasMimoKey() || hasModelscopeKey());
     if (latestDemoConfig.active || hasUserKey) {
       isStartingRef.current = false;
       return;

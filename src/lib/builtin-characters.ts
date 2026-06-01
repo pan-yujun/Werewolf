@@ -1,5 +1,11 @@
 import type { Persona, PlayerMind } from "@/types/game";
-import type { GeneratedCharacter } from "./character-generator";
+
+export interface GeneratedCharacter {
+  displayName: string;
+  persona: Persona;
+  playerMind?: PlayerMind;
+  avatarSeed?: string;
+}
 
 /**
  * 内置角色配置

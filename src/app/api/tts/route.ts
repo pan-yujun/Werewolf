@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     if (useMimoTts) {
       // 使用 MiMo TTS
-      return await handleMimoTts(normText, normVoiceId, headerMimoKey);
+      return await handleMimoTts(normText, normVoiceId, headerMimoKey ?? null);
     } else {
       // 使用 MiniMax TTS
       return await handleMinimaxTts(normText, normVoiceId, req);

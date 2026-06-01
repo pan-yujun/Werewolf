@@ -10,16 +10,16 @@ import {
   type Persona,
   type PlayerMind,
 } from "@/types/game";
-import { getGeneratorModel, getSelectedModels, hasDashscopeKey, hasMimoKey, hasZenmuxKey, isCustomKeyEnabled } from "@/lib/api-keys";
+import { getGeneratorModel, getSelectedModels, hasDashscopeKey, hasMimoKey, hasModelscopeKey, hasZenmuxKey, isCustomKeyEnabled } from "@/lib/api-keys";
 import { aiLogger } from "./ai-logger";
 import { GAME_TEMPERATURE } from "./ai-config";
 import { getRandomScenario } from "./scenarios";
 import { resolveVoiceId, shouldUseMimoTts, VOICE_PRESETS, type AppLocale } from "./voice-constants";
 import { getI18n } from "@/i18n/translator";
 import { parseLLMJson } from "./llm-json";
-import { generateBuiltinCharacters, DEFAULT_PLAYER_MIND, DEFAULT_VOICE_RULES } from "./builtin-characters";
+import { generateBuiltinCharacters, DEFAULT_PLAYER_MIND, DEFAULT_VOICE_RULES, type GeneratedCharacter } from "./builtin-characters";
 
-export type { GeneratedCharacter } from "./builtin-characters";
+export type { GeneratedCharacter };
 
 export interface GeneratedCharacters {
   characters: GeneratedCharacter[];
@@ -78,6 +78,7 @@ export const sampleModelRefs = (count: number): ModelRef[] => {
     if (hasZenmuxKey()) allowedProviders.add("zenmux");
     if (hasDashscopeKey()) allowedProviders.add("dashscope");
     if (hasMimoKey()) allowedProviders.add("mimo");
+    if (hasModelscopeKey()) allowedProviders.add("modelscope");
     if (allowedProviders.size === 0) return defaultPool;
 
     // Filter by allowed providers, then exclude non-player models

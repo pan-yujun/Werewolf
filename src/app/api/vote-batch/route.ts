@@ -11,7 +11,7 @@ type VoteBatchRequest = {
   reasoning?: { enabled: boolean; effort?: "minimal" | "low" | "medium" | "high"; max_tokens?: number };
   reasoning_effort?: "minimal" | "low" | "medium" | "high";
   response_format?: unknown;
-  provider?: "zenmux" | "dashscope";
+  provider?: "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope";
 };
 
 export async function POST(request: NextRequest) {
@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
 
     const headerApiKey = request.headers.get("x-zenmux-api-key")?.trim();
     const headerDashscopeKey = request.headers.get("x-dashscope-api-key")?.trim();
+    const headerMimoKey = request.headers.get("x-mimo-api-key")?.trim();
+    const headerModelscopeKey = request.headers.get("x-modelscope-api-key")?.trim();
     const origin = request.nextUrl.origin;
 
     const chatRequests = requests.map(({ voterId: _voterId, ...payload }) => payload);
@@ -36,6 +38,8 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
         ...(headerApiKey ? { "X-Zenmux-Api-Key": headerApiKey } : {}),
         ...(headerDashscopeKey ? { "X-Dashscope-Api-Key": headerDashscopeKey } : {}),
+        ...(headerMimoKey ? { "X-Mimo-Api-Key": headerMimoKey } : {}),
+        ...(headerModelscopeKey ? { "X-Modelscope-Api-Key": headerModelscopeKey } : {}),
         Authorization: request.headers.get("Authorization") || "",
       },
       body: JSON.stringify({ requests: chatRequests }),

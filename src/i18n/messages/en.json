@@ -2103,7 +2103,7 @@
     "validate": "Validate",
     "llmKey": {
       "title": "Language Model Key",
-      "description": "Configure at least Zenmux or Dashscope for gameplay and character generation"
+      "description": "Configure at least one of Zenmux, Dashscope, or ModelScope for gameplay and character generation"
     },
     "zenmux": {
       "label": "Zenmux API Key",
@@ -2128,6 +2128,15 @@
       "hide": "Hide Mimo API Key",
       "show": "Show Mimo API Key"
     },
+    "modelscope": {
+      "label": "ModelScope API Token",
+      "placeholder": "Optional: ModelScope",
+      "hide": "Hide ModelScope API Token",
+      "show": "Show ModelScope API Token",
+      "get": "Get ModelScope Token",
+      "note": "Qwen / DeepSeek / GLM open-source models",
+      "short": "ModelScope"
+    },
     "modelConfig": {
       "title": "Model Configuration",
       "description": "Character generation, daily summary, and AI player selection",
@@ -2151,6 +2160,14 @@
       "hideGroup": "Hide Minimax Group ID",
       "showGroup": "Show Minimax Group ID"
     },
+    "fetchModels": {
+      "button": "Get Available Models",
+      "loading": "Fetching...",
+      "success": "Found {count} available models",
+      "error": "Failed to fetch model list",
+      "empty": "Provider returned no models",
+      "available": "Available Models ({count})"
+    },
     "optionalPlaceholder": "Optional",
     "actions": {
       "clear": "Clear",
@@ -2160,7 +2177,7 @@
       "notValidated": "Validation failed. Cannot save.",
       "notValidatedDesc": "Please click 'Validate' first.",
       "needLlmKey": "Please configure at least one LLM Key",
-      "needLlmKeyDesc": "Either Zenmux or Dashscope is required",
+      "needLlmKeyDesc": "One of Zenmux, Dashscope, or ModelScope is required",
       "modelsAdjusted": "Some models unavailable. Auto-adjusted.",
       "modelsAdjustedDesc": "Check if selected models match your configured keys.",
       "saved": "API Key saved",

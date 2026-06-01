@@ -59,7 +59,9 @@ export async function POST(request: Request) {
 
   const headerZenmuxKey = request.headers.get("x-zenmux-api-key")?.trim();
   const headerDashscopeKey = request.headers.get("x-dashscope-api-key")?.trim();
-  const hasExternalKey = Boolean(headerZenmuxKey || headerDashscopeKey);
+  const headerMimoKey = request.headers.get("x-mimo-api-key")?.trim();
+  const headerModelscopeKey = request.headers.get("x-modelscope-api-key")?.trim();
+  const hasExternalKey = Boolean(headerZenmuxKey || headerDashscopeKey || headerMimoKey || headerModelscopeKey);
   const now = new Date();
   const springCampaignBase = buildSpringCampaignBase(now);
   const springCampaignActive = isSpringCampaignActive(now);

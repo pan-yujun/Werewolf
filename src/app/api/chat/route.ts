@@ -11,11 +11,12 @@ const ZENMUX_API_URL = "https://zenmux.ai/api/v1/chat/completions";
 const DASHSCOPE_API_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
 const DASHSCOPE_CHAT_COMPLETIONS_URL = `${DASHSCOPE_API_BASE_URL}/chat/completions`;
 const MIMO_DEFAULT_API_URL = "https://api.mimo.xiaomi.com/v1/chat/completions";
+const MODELSCOPE_CHAT_COMPLETIONS_URL = "https://api-inference.modelscope.cn/v1/chat/completions";
 
 // API 调用超时时间（毫秒）
 const API_TIMEOUT_MS = 60000;
 
-type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo";
+type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope";
 
 function getProviderForModel(model: string): Provider | null {
   const modelRef =
@@ -238,7 +239,8 @@ async function runBatchItem(
   headerDashscopeKey: string | null,
   headerTokendanceKey: string | null,
   headerTokendanceBaseUrl: string | null,
-  headerMimoKey: string | null
+  headerMimoKey: string | null,
+  headerModelscopeKey: string | null
 ): Promise<{ ok: true; data: unknown } | { ok: false; status: number; error: string; details?: unknown }> {
   const {
     model,
@@ -257,7 +259,7 @@ async function runBatchItem(
   }
 
   const modelProvider: Provider | null =
-    provider === "dashscope" || provider === "zenmux" || provider === "tokendance" || provider === "mimo" ? provider : getProviderForModel(model);
+    provider === "dashscope" || provider === "zenmux" || provider === "tokendance" || provider === "mimo" || provider === "modelscope" ? provider : getProviderForModel(model);
   if (!modelProvider) {
     return { ok: false, status: 400, error: `Unknown model: ${String(model ?? "").trim() || "unknown"}` };
   }
@@ -276,9 +278,12 @@ async function runBatchItem(
     if (modelProvider === "mimo" && !headerMimoKey) {
       return { ok: false, status: 401, error: "此模型需要您提供 Mimo API Key" };
     }
+    if (modelProvider === "modelscope" && !headerModelscopeKey) {
+      return { ok: false, status: 401, error: "此模型需要您提供魔搭 API Token" };
+    }
   }
 
-  const hasAnyCustomKeyHeader = Boolean((headerApiKey ?? "").trim() || (headerDashscopeKey ?? "").trim() || (headerTokendanceKey ?? "").trim() || (headerMimoKey ?? "").trim());
+  const hasAnyCustomKeyHeader = Boolean((headerApiKey ?? "").trim() || (headerDashscopeKey ?? "").trim() || (headerTokendanceKey ?? "").trim() || (headerMimoKey ?? "").trim() || (headerModelscopeKey ?? "").trim());
 
   const modelRefOverride = getModelRef(model);
   const normalizedTemperature =
@@ -519,6 +524,69 @@ async function runBatchItem(
     return { ok: true, data: result };
   }
 
+  // ── ModelScope (魔搭社区) batch ────────────────────────────────────
+  if (modelProvider === "modelscope") {
+    if (hasAnyCustomKeyHeader && !headerModelscopeKey) {
+      return { ok: false, status: 401, error: "已启用自定义 Key，但未提供魔搭 API Token（已拒绝回退到系统 Key）" };
+    }
+    const modelscopeApiKey = headerModelscopeKey || process.env.MODELSCOPE_API_KEY;
+    if (!modelscopeApiKey) {
+      return { ok: false, status: 500, error: "MODELSCOPE_API_KEY not configured on server" };
+    }
+
+    const modelscopeMessages = stripCacheControl(processedMessages);
+
+    const requestBody: Record<string, unknown> = {
+      model,
+      messages: modelscopeMessages,
+      temperature: cappedTemperature,
+    };
+    if (typeof max_tokens === "number" && Number.isFinite(max_tokens)) {
+      requestBody.max_tokens = Math.max(16, Math.floor(max_tokens));
+    }
+    if (response_format && supportsResponseFormat(model)) {
+      requestBody.response_format = response_format;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(MODELSCOPE_CHAT_COMPLETIONS_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${modelscopeApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let parsed: unknown = undefined;
+      try {
+        parsed = JSON.parse(errorText);
+      } catch {
+        // ignore
+      }
+      return {
+        ok: false,
+        status: response.status,
+        error: `ModelScope API error: ${response.status}`,
+        details: parsed ?? errorText,
+      };
+    }
+
+    const result = await response.json();
+    return { ok: true, data: result };
+  }
+
+  // ── ZenMux (default) batch ─────────────────────────────────────────
   if (hasAnyCustomKeyHeader && !headerApiKey) {
     return { ok: false, status: 401, error: "已启用自定义 Key，但未提供 Zenmux API Key（已拒绝回退到系统 Key）" };
   }
@@ -671,9 +739,10 @@ export async function POST(request: NextRequest) {
       const headerTokendanceKey = request.headers.get("x-tokendance-api-key")?.trim() || null;
       const headerTokendanceBaseUrl = request.headers.get("x-tokendance-base-url")?.trim() || null;
       const headerMimoKey = request.headers.get("x-mimo-api-key")?.trim() || null;
+      const headerModelscopeKey = request.headers.get("x-modelscope-api-key")?.trim() || null;
       const requests = body.requests as ChatRequestPayload[];
       const results = await Promise.all(
-        requests.map((req) => runBatchItem(req, headerApiKey, headerDashscopeKey, headerTokendanceKey, headerTokendanceBaseUrl, headerMimoKey))
+        requests.map((req) => runBatchItem(req, headerApiKey, headerDashscopeKey, headerTokendanceKey, headerTokendanceBaseUrl, headerMimoKey, headerModelscopeKey))
       );
       return NextResponse.json({ results });
     }
@@ -689,7 +758,7 @@ export async function POST(request: NextRequest) {
       provider,
     } = body;
     const modelProvider: Provider | null =
-      provider === "dashscope" || provider === "zenmux" || provider === "tokendance" || provider === "mimo" ? provider : getProviderForModel(model);
+      provider === "dashscope" || provider === "zenmux" || provider === "tokendance" || provider === "mimo" || provider === "modelscope" ? provider : getProviderForModel(model);
     if (!modelProvider) {
       // Reject unknown models early to avoid mis-routing.
       return NextResponse.json(
@@ -702,7 +771,8 @@ export async function POST(request: NextRequest) {
     const headerTokendanceKey = request.headers.get("x-tokendance-api-key")?.trim();
     const headerTokendanceBaseUrl = request.headers.get("x-tokendance-base-url")?.trim();
     const headerMimoKey = request.headers.get("x-mimo-api-key")?.trim();
-    const hasAnyCustomKeyHeader = Boolean((headerApiKey ?? "").trim() || (headerDashscopeKey ?? "").trim() || (headerTokendanceKey ?? "").trim() || (headerMimoKey ?? "").trim());
+    const headerModelscopeKey = request.headers.get("x-modelscope-api-key")?.trim();
+    const hasAnyCustomKeyHeader = Boolean((headerApiKey ?? "").trim() || (headerDashscopeKey ?? "").trim() || (headerTokendanceKey ?? "").trim() || (headerMimoKey ?? "").trim() || (headerModelscopeKey ?? "").trim());
     const isDefaultModel = PROJECT_MODELS.some((ref) => ref.model === model);
 
     const modelRefOverride = getModelRef(model);
@@ -760,6 +830,12 @@ export async function POST(request: NextRequest) {
       if (modelProvider === "mimo" && !headerMimoKey) {
         return NextResponse.json(
           { error: "此模型需要您提供 Mimo API Key" },
+          { status: 401 }
+        );
+      }
+      if (modelProvider === "modelscope" && !headerModelscopeKey) {
+        return NextResponse.json(
+          { error: "此模型需要您提供魔搭 API Token" },
           { status: 401 }
         );
       }
@@ -1040,6 +1116,93 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(result);
     }
 
+    // ── ModelScope (魔搭社区) ──────────────────────────────────────────
+    if (modelProvider === "modelscope") {
+      if (hasAnyCustomKeyHeader && !headerModelscopeKey) {
+        return NextResponse.json(
+          { error: "已启用自定义 Key，但未提供魔搭 API Token（已拒绝回退到系统 Key）" },
+          { status: 401 }
+        );
+      }
+
+      const modelscopeApiKey = headerModelscopeKey || process.env.MODELSCOPE_API_KEY;
+      if (!modelscopeApiKey) {
+        return NextResponse.json(
+          { error: "MODELSCOPE_API_KEY not configured on server" },
+          { status: 500 }
+        );
+      }
+
+      // ModelScope is OpenAI-compatible, strip cache_control (not supported)
+      const modelscopeMessages = stripCacheControl(processedMessages);
+
+      const requestBody: Record<string, unknown> = {
+        model,
+        messages: modelscopeMessages,
+        temperature: cappedTemperature,
+      };
+      if (typeof max_tokens === "number" && Number.isFinite(max_tokens)) {
+        requestBody.max_tokens = Math.max(16, Math.floor(max_tokens));
+      }
+      if (stream) {
+        requestBody.stream = true;
+      }
+      if (response_format && supportsResponseFormat(model)) {
+        requestBody.response_format = response_format;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+      let response: Response;
+      try {
+        response = await fetch(MODELSCOPE_CHAT_COMPLETIONS_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${modelscopeApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        const isAbort =
+          fetchError instanceof Error && fetchError.name === "AbortError";
+        return NextResponse.json(
+          {
+            error: isAbort
+              ? `ModelScope API timeout after ${API_TIMEOUT_MS / 1000}s`
+              : `ModelScope API fetch error: ${String(fetchError)}`,
+          },
+          { status: isAbort ? 504 : 502 }
+        );
+      }
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        return NextResponse.json(
+          { error: `ModelScope API error: ${response.status} - ${errorText}` },
+          { status: response.status }
+        );
+      }
+
+      if (stream) {
+        const headers = new Headers();
+        headers.set("Content-Type", "text/event-stream");
+        headers.set("Cache-Control", "no-cache");
+        headers.set("Connection", "keep-alive");
+
+        return new Response(response.body, { headers });
+      }
+
+      const result = await response.json();
+      return NextResponse.json(result);
+    }
+
+    // ── ZenMux (default) ──────────────────────────────────────────────
     if (hasAnyCustomKeyHeader && !headerApiKey) {
       return NextResponse.json(
         { error: "已启用自定义 Key，但未提供 Zenmux API Key（已拒绝回退到系统 Key）" },

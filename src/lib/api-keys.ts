@@ -13,6 +13,8 @@ const REVIEW_MODEL_STORAGE = "wolfcha_review_model";
 const VALIDATED_ZENMUX_KEY_STORAGE = "wolfcha_validated_zenmux_key";
 const VALIDATED_DASHSCOPE_KEY_STORAGE = "wolfcha_validated_dashscope_key";
 const VALIDATED_MIMO_KEY_STORAGE = "wolfcha_validated_mimo_key";
+const MODELSCOPE_API_KEY_STORAGE = "wolfcha_modelscope_api_key";
+const VALIDATED_MODELSCOPE_KEY_STORAGE = "wolfcha_validated_modelscope_key";
 
 function canUseStorage(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
@@ -66,6 +68,14 @@ export function setMimoApiKey(key: string) {
   writeStorage(MIMO_API_KEY_STORAGE, key);
 }
 
+export function getModelscopeApiKey(): string {
+  return readStorage(MODELSCOPE_API_KEY_STORAGE);
+}
+
+export function setModelscopeApiKey(key: string) {
+  writeStorage(MODELSCOPE_API_KEY_STORAGE, key);
+}
+
 export function getMinimaxGroupId(): string {
   return readStorage(MINIMAX_GROUP_ID_STORAGE);
 }
@@ -102,12 +112,24 @@ export function setValidatedMimoKey(key: string) {
   writeStorage(VALIDATED_MIMO_KEY_STORAGE, key);
 }
 
+export function getValidatedModelscopeKey(): string {
+  return readStorage(VALIDATED_MODELSCOPE_KEY_STORAGE);
+}
+
+export function setValidatedModelscopeKey(key: string) {
+  writeStorage(VALIDATED_MODELSCOPE_KEY_STORAGE, key);
+}
+
 export function hasDashscopeKey(): boolean {
   return Boolean(getDashscopeApiKey());
 }
 
 export function hasMimoKey(): boolean {
   return Boolean(getMimoApiKey());
+}
+
+export function hasModelscopeKey(): boolean {
+  return Boolean(getModelscopeApiKey());
 }
 
 export function hasMinimaxKey(): boolean {
@@ -120,6 +142,7 @@ function resolveModelWhenCustomEnabled(preferred: string, fallbackPreferred: str
   if (hasZenmuxKey()) allowedProviders.add("zenmux");
   if (hasDashscopeKey()) allowedProviders.add("dashscope");
   if (hasMimoKey()) allowedProviders.add("mimo");
+  if (hasModelscopeKey()) allowedProviders.add("modelscope");
 
   if (allowedProviders.size === 0) return preferred;
 
@@ -151,7 +174,7 @@ export function isCustomKeyEnabled(): boolean {
   if (!flagEnabled) return false;
   // 额外安全检查：即使标志位为 true，如果没有任何有效的 LLM API key，也返回 false
   // 这可以防止用户开启了开关但没有正确配置 key 的情况
-  const hasAnyLLMKey = hasZenmuxKey() || hasDashscopeKey() || hasMimoKey();
+  const hasAnyLLMKey = hasZenmuxKey() || hasDashscopeKey() || hasMimoKey() || hasModelscopeKey();
   return hasAnyLLMKey;
 }
 
@@ -262,6 +285,8 @@ export function clearApiKeys() {
   window.localStorage.removeItem(VALIDATED_ZENMUX_KEY_STORAGE);
   window.localStorage.removeItem(VALIDATED_DASHSCOPE_KEY_STORAGE);
   window.localStorage.removeItem(VALIDATED_MIMO_KEY_STORAGE);
+  window.localStorage.removeItem(MODELSCOPE_API_KEY_STORAGE);
+  window.localStorage.removeItem(VALIDATED_MODELSCOPE_KEY_STORAGE);
 }
 
 export interface KeyValidationResult {
@@ -278,7 +303,8 @@ export async function validateApiKeyBalance(): Promise<KeyValidationResult> {
   const zenmuxKey = getZenmuxApiKey();
   const dashscopeKey = getDashscopeApiKey();
   const mimoKey = getMimoApiKey();
-  if (!zenmuxKey && !dashscopeKey && !mimoKey) {
+  const modelscopeKey = getModelscopeApiKey();
+  if (!zenmuxKey && !dashscopeKey && !mimoKey && !modelscopeKey) {
     return { valid: false, error: "未配置任何 API Key", errorCode: "no_key" };
   }
 
@@ -294,6 +320,9 @@ export async function validateApiKeyBalance(): Promise<KeyValidationResult> {
     }
     if (mimoKey) {
       headers["X-Mimo-Api-Key"] = mimoKey;
+    }
+    if (modelscopeKey) {
+      headers["X-Modelscope-Api-Key"] = modelscopeKey;
     }
 
     const response = await fetch("/api/validate-key", {

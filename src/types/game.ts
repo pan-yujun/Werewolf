@@ -66,7 +66,7 @@ export type Alignment = "village" | "wolf";
  }
 
 export interface ModelRef {
-  provider: "zenmux" | "dashscope" | "tokendance" | "mimo";
+  provider: "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope";
   model: string;
   /** Override call-time temperature for this model (e.g. some models only support 1) */
   temperature?: number;
@@ -288,6 +288,19 @@ export const MODEL_IDS = {
   mimo: {
     mimoV25: "mimo-v2.5",
   },
+  modelscope: {
+    deepseekV32: "deepseek-ai/DeepSeek-V3.2",
+    deepseekV4Pro: "deepseek-ai/DeepSeek-V4-Pro",
+    deepseekV4Flash: "deepseek-ai/DeepSeek-V4-Flash",
+    deepseekR1: "deepseek-ai/DeepSeek-R1-0528",
+    qwen3_32b: "Qwen/Qwen3-32B",
+    qwen3_235b: "Qwen/Qwen3-235B-A22B",
+    glm47: "ZhipuAI/GLM-4.7-Flash",
+    glm5: "ZhipuAI/GLM-5",
+    kimiK25: "moonshotai/Kimi-K2.5",
+    minimaxM27: "MiniMax/MiniMax-M2.7",
+    mimoV2: "XiaomiMiMo/MiMo-V2-Flash",
+  },
 } as const;
 
 const BUILTIN_DEEPSEEK_V4_PRO_MODEL: ModelRef = {
@@ -313,6 +326,7 @@ export const DEFAULT_MODEL_CONFIG = {
     zenmux: MODEL_IDS.zenmux.geminiFlashLite,
     dashscope: MODEL_IDS.dashscope.deepseek,
     mimo: MODEL_IDS.mimo.mimoV25,
+    modelscope: MODEL_IDS.modelscope.deepseekV4Flash,
   },
 } as const;
 
@@ -323,6 +337,7 @@ export const REVIEW_MODEL = DEFAULT_MODEL_CONFIG.review;
 export const ZENMUX_VALIDATION_MODEL = DEFAULT_MODEL_CONFIG.validation.zenmux;
 export const DASHSCOPE_VALIDATION_MODEL = DEFAULT_MODEL_CONFIG.validation.dashscope;
 export const MIMO_VALIDATION_MODEL = DEFAULT_MODEL_CONFIG.validation.mimo;
+export const MODELSCOPE_VALIDATION_MODEL = DEFAULT_MODEL_CONFIG.validation.modelscope;
 
 export const BUILTIN_PLAYER_MODELS: ModelRef[] = USE_MIMO_DEFAULT
   ? [BUILTIN_MIMO_MODEL]
@@ -342,6 +357,7 @@ export const PROJECT_MODELS: ModelRef[] = [
   { provider: "dashscope", model: MODEL_IDS.dashscope.deepseek },
   { provider: "zenmux", model: MODEL_IDS.zenmux.geminiFlashLite },
   { provider: "mimo", model: MODEL_IDS.mimo.mimoV25 },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.deepseekV4Flash },
 ];
 
 // User-selectable models when custom key is enabled.
@@ -359,6 +375,17 @@ export const ALL_MODELS: ModelRef[] = [
   { provider: "zenmux", model: MODEL_IDS.zenmux.glm47, temperature: 1, reasoning: { enabled: false } },
   { provider: "zenmux", model: MODEL_IDS.zenmux.minimaxM21, temperature: 1, reasoning: { enabled: false } },
   { provider: "mimo", model: MODEL_IDS.mimo.mimoV25 },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.deepseekV32 },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.deepseekV4Pro },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.deepseekV4Flash },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.deepseekR1, reasoning: { enabled: true } },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.qwen3_32b },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.qwen3_235b },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.glm47 },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.glm5 },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.kimiK25 },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.minimaxM27 },
+  { provider: "modelscope", model: MODEL_IDS.modelscope.mimoV2 },
 ];
 
 // Models not allowed for in-game players (summary & generation only).

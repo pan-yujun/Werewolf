@@ -2185,7 +2185,7 @@
     "validate": "验证",
     "llmKey": {
       "title": "语言模型 Key",
-      "description": "至少配置 Zenmux 或百炼其一，用于对局与人物生成"
+      "description": "至少配置 Zenmux、百炼或魔搭其一，用于对局与人物生成"
     },
     "zenmux": {
       "label": "Zenmux API Key",
@@ -2210,6 +2210,15 @@
       "hide": "隐藏 Mimo API Key",
       "show": "显示 Mimo API Key"
     },
+    "modelscope": {
+      "label": "魔搭 API Token",
+      "placeholder": "可选：魔搭社区",
+      "hide": "隐藏魔搭 API Token",
+      "show": "显示魔搭 API Token",
+      "get": "获取魔搭 Token",
+      "note": "Qwen / DeepSeek / GLM 等开源模型",
+      "short": "魔搭"
+    },
     "modelConfig": {
       "title": "模型配置",
       "description": "人物生成、每日总结与 AI 玩家抽选",
@@ -2233,6 +2242,14 @@
       "hideGroup": "隐藏 Minimax Group ID",
       "showGroup": "显示 Minimax Group ID"
     },
+    "fetchModels": {
+      "button": "获取可用模型",
+      "loading": "获取中...",
+      "success": "获取到 {count} 个可用模型",
+      "error": "获取模型列表失败",
+      "empty": "该 provider 未返回模型列表",
+      "available": "可用模型 ({count})"
+    },
     "optionalPlaceholder": "可选",
     "actions": {
       "clear": "清除",
@@ -2242,7 +2259,7 @@
       "notValidated": "未通过验证，无法保存",
       "notValidatedDesc": "请先点击「验证配置」",
       "needLlmKey": "请至少配置一个 LLM Key",
-      "needLlmKeyDesc": "Zenmux 或百炼二选一即可",
+      "needLlmKeyDesc": "Zenmux、百炼或魔搭三选一即可",
       "modelsAdjusted": "部分模型不可用，已自动调整",
       "modelsAdjustedDesc": "请检查所选模型与已配置的 Key 是否匹配",
       "saved": "已保存 API Key",

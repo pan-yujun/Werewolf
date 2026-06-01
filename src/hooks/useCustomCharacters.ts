@@ -93,8 +93,8 @@ export function useCustomCharacters(user: User | null) {
           gender: normalizedInput.gender,
           age: normalizedInput.age,
           mbti: normalizedInput.mbti.toUpperCase(),
-          basic_info: normalizedInput.basic_info?.trim() || null,
-          style_label: normalizedInput.style_label?.trim() || null,
+          basic_info: normalizedInput.basic_info?.trim() || undefined,
+          style_label: normalizedInput.style_label?.trim() || undefined,
           avatar_seed: avatarSeed,
           is_deleted: false,
           created_at: new Date().toISOString(),
@@ -116,8 +116,8 @@ export function useCustomCharacters(user: User | null) {
           gender: normalizedInput.gender,
           age: normalizedInput.age,
           mbti: normalizedInput.mbti.toUpperCase(),
-          basic_info: normalizedInput.basic_info?.trim() || null,
-          style_label: normalizedInput.style_label?.trim() || null,
+          basic_info: normalizedInput.basic_info?.trim() || undefined,
+          style_label: normalizedInput.style_label?.trim() || undefined,
           avatar_seed: avatarSeed,
         } as never)
         .select()

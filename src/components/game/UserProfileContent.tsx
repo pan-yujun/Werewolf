@@ -18,6 +18,7 @@ import {
   getMinimaxApiKey,
   getMinimaxGroupId,
   getMimoApiKey,
+  getModelscopeApiKey,
   getSelectedModels,
   getSummaryModel,
   getReviewModel,
@@ -25,10 +26,12 @@ import {
   getValidatedZenmuxKey,
   getValidatedDashscopeKey,
   getValidatedMimoKey,
+  getValidatedModelscopeKey,
   setGeneratorModel,
   setMinimaxApiKey,
   setMinimaxGroupId,
   setMimoApiKey,
+  setModelscopeApiKey,
   setSelectedModels,
   setSummaryModel,
   setReviewModel,
@@ -38,6 +41,7 @@ import {
   setValidatedZenmuxKey,
   setValidatedDashscopeKey,
   setValidatedMimoKey,
+  setValidatedModelscopeKey,
   isCustomKeyEnabled as getCustomKeyEnabled,
 } from "@/lib/api-keys";
 import { getModelLogoPath } from "@/lib/model-logo";
@@ -50,6 +54,7 @@ import {
   DASHSCOPE_VALIDATION_MODEL,
   GENERATOR_MODEL,
   MIMO_VALIDATION_MODEL,
+  MODELSCOPE_VALIDATION_MODEL,
   ZENMUX_VALIDATION_MODEL,
   SUMMARY_MODEL,
   REVIEW_MODEL,
@@ -99,11 +104,13 @@ export function UserProfileContent({
   const [zenmuxKey, setZenmuxKeyState] = useState("");
   const [dashscopeKey, setDashscopeKeyState] = useState("");
   const [mimoKey, setMimoKeyState] = useState("");
+  const [modelscopeKey, setModelscopeKeyState] = useState("");
   const [minimaxKey, setMinimaxKeyState] = useState("");
   const [minimaxGroupId, setMinimaxGroupIdState] = useState("");
   const [showZenmuxKey, setShowZenmuxKey] = useState(false);
   const [showDashscopeKey, setShowDashscopeKey] = useState(false);
   const [showMimoKey, setShowMimoKey] = useState(false);
+  const [showModelscopeKey, setShowModelscopeKey] = useState(false);
   const [showMinimaxKey, setShowMinimaxKey] = useState(false);
   const [showMinimaxGroupId, setShowMinimaxGroupId] = useState(false);
   const [isCustomKeyEnabled, setIsCustomKeyEnabled] = useState(false);
@@ -115,11 +122,16 @@ export function UserProfileContent({
   const [isValidatingZenmux, setIsValidatingZenmux] = useState(false);
   const [isValidatingDashscope, setIsValidatingDashscope] = useState(false);
   const [isValidatingMimo, setIsValidatingMimo] = useState(false);
-  const [validatedKeys, setValidatedKeys] = useState<{ zenmux: string; dashscope: string; mimo: string }>({
+  const [isValidatingModelscope, setIsValidatingModelscope] = useState(false);
+  const [validatedKeys, setValidatedKeys] = useState<{ zenmux: string; dashscope: string; mimo: string; modelscope: string }>({
     zenmux: "",
     dashscope: "",
     mimo: "",
+    modelscope: "",
   });
+  const [fetchedModels, setFetchedModels] = useState<Record<string, string[]>>({});
+  const [isFetchingModels, setIsFetchingModels] = useState<Record<string, boolean>>({});
+  const [expandedModelList, setExpandedModelList] = useState<Record<string, boolean>>({});
   const [purchaseQuantity, setPurchaseQuantity] = useState(10);
   const [purchaseQuantityInput, setPurchaseQuantityInput] = useState("10");
   const [isPurchasing, setIsPurchasing] = useState(false);
@@ -142,6 +154,7 @@ export function UserProfileContent({
     const nextZenmuxKey = getZenmuxApiKey();
     const nextDashscopeKey = getDashscopeApiKey();
     const nextMimoKey = getMimoApiKey();
+    const nextModelscopeKey = getModelscopeApiKey();
     const nextMinimaxKey = getMinimaxApiKey();
     const nextMinimaxGroupId = getMinimaxGroupId();
     const nextSelectedModels = getSelectedModels();
@@ -153,6 +166,7 @@ export function UserProfileContent({
       setZenmuxKeyState(nextZenmuxKey);
       setDashscopeKeyState(nextDashscopeKey);
       setMimoKeyState(nextMimoKey);
+      setModelscopeKeyState(nextModelscopeKey);
       setMinimaxKeyState(nextMinimaxKey);
       setMinimaxGroupIdState(nextMinimaxGroupId);
       setSelectedModelsState(nextSelectedModels);
@@ -163,10 +177,12 @@ export function UserProfileContent({
       const z = nextZenmuxKey;
       const d = nextDashscopeKey;
       const m = nextMimoKey;
+      const ms = nextModelscopeKey;
       setValidatedKeys({
         zenmux: z && getValidatedZenmuxKey() === z ? z : "",
         dashscope: d && getValidatedDashscopeKey() === d ? d : "",
         mimo: m && getValidatedMimoKey() === m ? m : "",
+        modelscope: ms && getValidatedModelscopeKey() === ms ? ms : "",
       });
     }
     return () => {
@@ -177,6 +193,7 @@ export function UserProfileContent({
   const zenmuxConfigured = Boolean(zenmuxKey.trim());
   const dashscopeConfigured = Boolean(dashscopeKey.trim());
   const mimoConfigured = Boolean(mimoKey.trim());
+  const modelscopeConfigured = Boolean(modelscopeKey.trim());
   const modelPool = useMemo(() => {
     return ALL_MODELS;
   }, []);
@@ -188,17 +205,38 @@ export function UserProfileContent({
     if (zenmuxConfigured) providers.add("zenmux");
     if (dashscopeConfigured) providers.add("dashscope");
     if (mimoConfigured) providers.add("mimo");
+    if (modelscopeConfigured) providers.add("modelscope");
     if (providers.size === 0) return [];
-    return modelPool.filter((ref) => providers.has(ref.provider));
-  }, [dashscopeConfigured, mimoConfigured, modelPool, zenmuxConfigured]);
+
+    // Start with hardcoded models from ALL_MODELS
+    const basePool = modelPool.filter((ref) => providers.has(ref.provider));
+    const existingModels = new Set(basePool.map((ref) => `${ref.provider}:${ref.model}`));
+
+    // Merge dynamically fetched models
+    const dynamicModels: ModelRef[] = [];
+    for (const provider of providers) {
+      const fetched = fetchedModels[provider];
+      if (!fetched) continue;
+      for (const modelId of fetched) {
+        const key = `${provider}:${modelId}`;
+        if (!existingModels.has(key)) {
+          existingModels.add(key);
+          dynamicModels.push({ provider, model: modelId });
+        }
+      }
+    }
+
+    return [...basePool, ...dynamicModels];
+  }, [dashscopeConfigured, mimoConfigured, modelscopeConfigured, modelPool, zenmuxConfigured, fetchedModels]);
   const defaultAvailableModels = useMemo(() => {
     const providers = new Set<ModelRef["provider"]>();
     if (zenmuxConfigured) providers.add("zenmux");
     if (dashscopeConfigured) providers.add("dashscope");
     if (mimoConfigured) providers.add("mimo");
+    if (modelscopeConfigured) providers.add("modelscope");
     if (providers.size === 0) return [];
     return defaultModelPool.filter((ref) => providers.has(ref.provider));
-  }, [dashscopeConfigured, defaultModelPool, mimoConfigured, zenmuxConfigured]);
+  }, [dashscopeConfigured, defaultModelPool, mimoConfigured, modelscopeConfigured, zenmuxConfigured]);
   const playerModelPool = useMemo(() => {
     return filterPlayerModels(availableModelPool);
   }, [availableModelPool]);
@@ -349,7 +387,7 @@ export function UserProfileContent({
   };
 
   const validateProviderKey = async (options: {
-    provider: "zenmux" | "dashscope" | "mimo";
+    provider: "zenmux" | "dashscope" | "mimo" | "modelscope";
     key: string;
     model: string;
   }) => {
@@ -363,6 +401,8 @@ export function UserProfileContent({
       headers["X-Dashscope-Api-Key"] = key;
     } else if (provider === "mimo") {
       headers["X-Mimo-Api-Key"] = key;
+    } else if (provider === "modelscope") {
+      headers["X-Modelscope-Api-Key"] = key;
     }
 
     const response = await fetch("/api/validate-key", {
@@ -453,10 +493,34 @@ export function UserProfileContent({
     }
   };
 
+  const handleValidateModelscope = async () => {
+    if (isValidatingModelscope || !modelscopeKey.trim()) return;
+    setIsValidatingModelscope(true);
+    try {
+      await validateProviderKey({
+        provider: "modelscope",
+        key: modelscopeKey.trim(),
+        model: MODELSCOPE_VALIDATION_MODEL,
+      });
+      setValidatedKeys((prev) => ({ ...prev, modelscope: modelscopeKey.trim() }));
+      setValidatedModelscopeKey(modelscopeKey.trim());
+    } catch (error) {
+      setValidatedKeys((prev) => ({ ...prev, modelscope: "" }));
+      if (modelscopeKey.trim() === getValidatedModelscopeKey()) setValidatedModelscopeKey("");
+      toast(t("customKey.toasts.validateFailed"), {
+        description: t("customKey.toasts.validateFailedDesc"),
+      });
+    } finally {
+      setIsValidatingModelscope(false);
+    }
+  };
+
   const handleClearKeys = () => {
     clearApiKeys();
     setZenmuxKeyState("");
     setDashscopeKeyState("");
+    setMimoKeyState("");
+    setModelscopeKeyState("");
     setMinimaxKeyState("");
     setMinimaxGroupIdState("");
     setSelectedModelsState([]);
@@ -464,9 +528,49 @@ export function UserProfileContent({
     setSummaryModelState(getSummaryModel());
     setReviewModelState(getReviewModel());
     setIsCustomKeyEnabled(false);
-    setValidatedKeys({ zenmux: "", dashscope: "", mimo: "" });
+    setValidatedKeys({ zenmux: "", dashscope: "", mimo: "", modelscope: "" });
     onCustomKeyEnabledChange?.(false);
     toast(t("customKey.toasts.cleared"));
+  };
+
+  const fetchProviderModels = async (provider: string, apiKey: string) => {
+    if (!apiKey.trim() || isFetchingModels[provider]) return;
+    setIsFetchingModels((prev) => ({ ...prev, [provider]: true }));
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-Provider": provider,
+      };
+      if (apiKey) headers["X-Api-Key"] = apiKey;
+
+      const response = await fetch("/api/list-models", {
+        method: "POST",
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const models: string[] = Array.isArray(data?.models) ? data.models : [];
+
+      if (models.length === 0) {
+        toast(t("customKey.fetchModels.empty"));
+        return;
+      }
+
+      setFetchedModels((prev) => ({ ...prev, [provider]: models }));
+      setExpandedModelList((prev) => ({ ...prev, [provider]: true }));
+      toast(t("customKey.fetchModels.success", { count: models.length }));
+    } catch (error) {
+      console.error(`[fetchProviderModels] ${provider} error:`, error);
+      toast(t("customKey.fetchModels.error"), {
+        description: String(error),
+      });
+    } finally {
+      setIsFetchingModels((prev) => ({ ...prev, [provider]: false }));
+    }
   };
 
   const handlePurchase = async () => {
@@ -844,6 +948,38 @@ export function UserProfileContent({
                     </div>
                     <ArrowRight size={14} className="shrink-0 text-[var(--color-accent)]" />
                   </a>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => fetchProviderModels("zenmux", zenmuxKey.trim())}
+                    disabled={isFetchingModels.zenmux || !zenmuxKey.trim()}
+                  >
+                    {isFetchingModels.zenmux ? t("customKey.fetchModels.loading") : t("customKey.fetchModels.button")}
+                  </Button>
+                  {fetchedModels.zenmux && fetchedModels.zenmux.length > 0 && (
+                    <div className="space-y-1">
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                        onClick={() => setExpandedModelList((prev) => ({ ...prev, zenmux: !prev.zenmux }))}
+                      >
+                        <CaretDown size={12} className={`transition-transform ${expandedModelList.zenmux ? "" : "-rotate-90"}`} />
+                        {t("customKey.fetchModels.available", { count: fetchedModels.zenmux.length })}
+                      </button>
+                      {expandedModelList.zenmux && (
+                        <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 space-y-0.5">
+                          {fetchedModels.zenmux.map((modelId) => (
+                            <div key={modelId} className="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-0.5">
+                              <img src={getModelLogoPath({ provider: "zenmux", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
+                              <span className="truncate">{modelId}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t border-[var(--border-color)] pt-3 space-y-2">
@@ -877,6 +1013,38 @@ export function UserProfileContent({
                     </div>
                     <ArrowRight size={14} className="shrink-0 text-[var(--text-muted)]" />
                   </a>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => fetchProviderModels("dashscope", dashscopeKey.trim())}
+                    disabled={isFetchingModels.dashscope || !dashscopeKey.trim()}
+                  >
+                    {isFetchingModels.dashscope ? t("customKey.fetchModels.loading") : t("customKey.fetchModels.button")}
+                  </Button>
+                  {fetchedModels.dashscope && fetchedModels.dashscope.length > 0 && (
+                    <div className="space-y-1">
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                        onClick={() => setExpandedModelList((prev) => ({ ...prev, dashscope: !prev.dashscope }))}
+                      >
+                        <CaretDown size={12} className={`transition-transform ${expandedModelList.dashscope ? "" : "-rotate-90"}`} />
+                        {t("customKey.fetchModels.available", { count: fetchedModels.dashscope.length })}
+                      </button>
+                      {expandedModelList.dashscope && (
+                        <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 space-y-0.5">
+                          {fetchedModels.dashscope.map((modelId) => (
+                            <div key={modelId} className="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-0.5">
+                              <img src={getModelLogoPath({ provider: "dashscope", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
+                              <span className="truncate">{modelId}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t border-[var(--border-color)] pt-3 space-y-2">
@@ -902,6 +1070,102 @@ export function UserProfileContent({
                       {isValidatingMimo ? t("customKey.validating") : validatedKeys.mimo && validatedKeys.mimo === mimoKey.trim() ? <Check size={16} className="text-[var(--color-success)]" /> : t("customKey.validate")}
                     </Button>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => fetchProviderModels("mimo", mimoKey.trim())}
+                    disabled={isFetchingModels.mimo || !mimoKey.trim()}
+                  >
+                    {isFetchingModels.mimo ? t("customKey.fetchModels.loading") : t("customKey.fetchModels.button")}
+                  </Button>
+                  {fetchedModels.mimo && fetchedModels.mimo.length > 0 && (
+                    <div className="space-y-1">
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                        onClick={() => setExpandedModelList((prev) => ({ ...prev, mimo: !prev.mimo }))}
+                      >
+                        <CaretDown size={12} className={`transition-transform ${expandedModelList.mimo ? "" : "-rotate-90"}`} />
+                        {t("customKey.fetchModels.available", { count: fetchedModels.mimo.length })}
+                      </button>
+                      {expandedModelList.mimo && (
+                        <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 space-y-0.5">
+                          {fetchedModels.mimo.map((modelId) => (
+                            <div key={modelId} className="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-0.5">
+                              <img src={getModelLogoPath({ provider: "mimo", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
+                              <span className="truncate">{modelId}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-[var(--border-color)] pt-3 space-y-2">
+                  <Label htmlFor="modelscope-key" className="text-xs">{t("customKey.modelscope.label")}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="modelscope-key"
+                      name="wolfcha-modelscope-api-key"
+                      type={showModelscopeKey ? "text" : "password"}
+                      autoComplete="new-password"
+                      placeholder={t("customKey.modelscope.placeholder")}
+                      value={modelscopeKey}
+                      onChange={(e) => {
+                        setModelscopeKeyState(e.target.value);
+                        setValidatedKeys((prev) => ({ ...prev, modelscope: "" }));
+                      }}
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowModelscopeKey((v) => !v)} aria-label={showModelscopeKey ? t("customKey.modelscope.hide") : t("customKey.modelscope.show")}>
+                      {showModelscopeKey ? <EyeSlash size={16} /> : <Eye size={16} />}
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={handleValidateModelscope} disabled={isValidatingModelscope || !modelscopeKey.trim() || (!!validatedKeys.modelscope && validatedKeys.modelscope === modelscopeKey.trim())}>
+                      {isValidatingModelscope ? t("customKey.validating") : validatedKeys.modelscope && validatedKeys.modelscope === modelscopeKey.trim() ? <Check size={16} className="text-[var(--color-success)]" /> : t("customKey.validate")}
+                    </Button>
+                  </div>
+                  <a href="https://modelscope.cn/my/myaccesstoken" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] px-2.5 py-2 transition-colors hover:bg-[var(--bg-hover)]">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-medium text-[var(--text-primary)]">{t("customKey.modelscope.get")}</span>
+                      <span className="text-[11px] text-[var(--text-muted)] ml-1.5">{t("customKey.modelscope.note")}</span>
+                    </div>
+                    <ArrowRight size={14} className="shrink-0 text-[var(--text-muted)]" />
+                  </a>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => fetchProviderModels("modelscope", modelscopeKey.trim())}
+                    disabled={isFetchingModels.modelscope || !modelscopeKey.trim()}
+                  >
+                    {isFetchingModels.modelscope ? t("customKey.fetchModels.loading") : t("customKey.fetchModels.button")}
+                  </Button>
+                  {fetchedModels.modelscope && fetchedModels.modelscope.length > 0 && (
+                    <div className="space-y-1">
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                        onClick={() => setExpandedModelList((prev) => ({ ...prev, modelscope: !prev.modelscope }))}
+                      >
+                        <CaretDown size={12} className={`transition-transform ${expandedModelList.modelscope ? "" : "-rotate-90"}`} />
+                        {t("customKey.fetchModels.available", { count: fetchedModels.modelscope.length })}
+                      </button>
+                      {expandedModelList.modelscope && (
+                        <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 space-y-0.5">
+                          {fetchedModels.modelscope.map((modelId) => (
+                            <div key={modelId} className="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-0.5">
+                              <img src={getModelLogoPath({ provider: "modelscope", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
+                              <span className="truncate">{modelId}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </section>
 
@@ -923,7 +1187,7 @@ export function UserProfileContent({
                         <SelectTrigger id="generator-model"><SelectValue placeholder={t("customKey.selectModel")} /></SelectTrigger>
                         <SelectContent className="max-h-60">
                           {availableModelPool.map((r) => (
-                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : t("customKey.dashscope.short")} icon={getModelLogoPath(r)} />
+                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider} icon={getModelLogoPath(r)} />
                           ))}
                         </SelectContent>
                       </Select>
@@ -937,7 +1201,7 @@ export function UserProfileContent({
                         <SelectTrigger id="summary-model"><SelectValue placeholder={t("customKey.selectModel")} /></SelectTrigger>
                         <SelectContent className="max-h-60">
                           {availableModelPool.map((r) => (
-                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : t("customKey.dashscope.short")} icon={getModelLogoPath(r)} />
+                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider} icon={getModelLogoPath(r)} />
                           ))}
                         </SelectContent>
                       </Select>
@@ -951,7 +1215,7 @@ export function UserProfileContent({
                         <SelectTrigger id="review-model"><SelectValue placeholder={t("customKey.selectModel")} /></SelectTrigger>
                         <SelectContent className="max-h-60">
                           {availableModelPool.map((r) => (
-                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : t("customKey.dashscope.short")} icon={getModelLogoPath(r)} />
+                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider} icon={getModelLogoPath(r)} />
                           ))}
                         </SelectContent>
                       </Select>
@@ -985,7 +1249,7 @@ export function UserProfileContent({
                           >
                             <img src={getModelLogoPath(r)} alt="" className="h-4 w-4 shrink-0 rounded object-contain" />
                             <span className="min-w-0 flex-1 truncate text-[var(--text-primary)]">{r.model}</span>
-                            <span className="shrink-0 text-xs text-[var(--text-muted)]">({r.provider === "zenmux" ? "Zenmux" : t("customKey.dashscope.short")})</span>
+                            <span className="shrink-0 text-xs text-[var(--text-muted)]">({r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider})</span>
                           </DropdownMenuCheckboxItem>
                         ))}
                       </DropdownMenuContent>

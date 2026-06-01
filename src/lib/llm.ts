@@ -1,4 +1,4 @@
-import { getDashscopeApiKey, getMimoApiKey, getZenmuxApiKey, isCustomKeyEnabled } from "@/lib/api-keys";
+import { getDashscopeApiKey, getMimoApiKey, getModelscopeApiKey, getZenmuxApiKey, isCustomKeyEnabled } from "@/lib/api-keys";
 import { ALL_MODELS, AVAILABLE_MODELS, PROJECT_MODELS, type ModelRef } from "@/types/game";
 import { gameStatsTracker } from "@/hooks/useGameStats";
 import { gameSessionTracker } from "@/lib/game-session-tracker";
@@ -18,7 +18,7 @@ export interface LLMMessage {
   reasoning_details?: unknown;
 }
 
-type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo";
+type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -58,6 +58,9 @@ export function resolveApiKeySource(model: string): ApiKeySource {
    }
    if (provider === "mimo") {
      return getMimoApiKey() ? "user" : "project";
+   }
+   if (provider === "modelscope") {
+     return getModelscopeApiKey() ? "user" : "project";
    }
    return getZenmuxApiKey() ? "user" : "project";
  }
@@ -466,6 +469,7 @@ export async function generateCompletion(
   const headerApiKey = customEnabled ? getZenmuxApiKey() : "";
   const dashscopeApiKey = customEnabled ? getDashscopeApiKey() : "";
   const mimoApiKey = customEnabled ? getMimoApiKey() : "";
+  const modelscopeApiKey = customEnabled ? getModelscopeApiKey() : "";
   const modelToUse = customEnabled
     ? options.model
     : resolveModelForBuiltin(options.model);
@@ -480,6 +484,9 @@ export async function generateCompletion(
   }
   if (mimoApiKey) {
     headers["X-Mimo-Api-Key"] = mimoApiKey;
+  }
+  if (modelscopeApiKey) {
+    headers["X-Modelscope-Api-Key"] = modelscopeApiKey;
   }
 
   Object.assign(headers, await getAuthHeaders());
@@ -575,6 +582,7 @@ export async function generateCompletionBatch(
   const headerApiKey = customEnabled ? getZenmuxApiKey() : "";
   const dashscopeApiKey = customEnabled ? getDashscopeApiKey() : "";
   const mimoApiKey = customEnabled ? getMimoApiKey() : "";
+  const modelscopeApiKey = customEnabled ? getModelscopeApiKey() : "";
   const resolvedRequests = customEnabled
     ? requests
     : requests.map((r) => ({ ...r, model: resolveModelForBuiltin(r.model) }));
@@ -589,6 +597,9 @@ export async function generateCompletionBatch(
   }
   if (mimoApiKey) {
     headers["X-Mimo-Api-Key"] = mimoApiKey;
+  }
+  if (modelscopeApiKey) {
+    headers["X-Modelscope-Api-Key"] = modelscopeApiKey;
   }
 
   Object.assign(headers, await getAuthHeaders());
@@ -645,6 +656,8 @@ export async function* generateCompletionStream(
   const customEnabled = isCustomKeyEnabled();
   const headerApiKey = customEnabled ? getZenmuxApiKey() : "";
   const dashscopeApiKey = customEnabled ? getDashscopeApiKey() : "";
+  const mimoApiKey = customEnabled ? getMimoApiKey() : "";
+  const modelscopeApiKey = customEnabled ? getModelscopeApiKey() : "";
   const modelToUse = customEnabled
     ? options.model
     : resolveModelForBuiltin(options.model);
@@ -656,6 +669,12 @@ export async function* generateCompletionStream(
   }
   if (dashscopeApiKey) {
     headers["X-Dashscope-Api-Key"] = dashscopeApiKey;
+  }
+  if (mimoApiKey) {
+    headers["X-Mimo-Api-Key"] = mimoApiKey;
+  }
+  if (modelscopeApiKey) {
+    headers["X-Modelscope-Api-Key"] = modelscopeApiKey;
   }
 
   Object.assign(headers, await getAuthHeaders());

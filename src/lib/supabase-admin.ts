@@ -36,6 +36,7 @@ function createNoopProxy(): SupabaseClient<Database> {
     },
   };
 
+  // @ts-expect-error -- dev-mode no-op proxy; runtime properties are handled by the Proxy handler
   return new Proxy({} as SupabaseClient<Database>, handler);
 }
 

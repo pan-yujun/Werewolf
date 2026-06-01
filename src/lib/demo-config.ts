@@ -1,5 +1,5 @@
 export type DemoModePublicConfigSnapshot = {
-  source: "database";
+  source: "database" | "env";
   enabled: boolean;
   active: boolean;
   startsAt: string | null;

@@ -7,7 +7,7 @@ import {
   getDefaultDemoModeConfigSnapshot,
   type DemoModePublicConfigSnapshot,
 } from "@/lib/demo-config";
-import { getDashscopeApiKey, getZenmuxApiKey, isCustomKeyEnabled } from "@/lib/api-keys";
+import { getDashscopeApiKey, getMimoApiKey, getModelscopeApiKey, getZenmuxApiKey, isCustomKeyEnabled } from "@/lib/api-keys";
 import { clearGuestId, getGuestId, readGuestIdFromStorage } from "@/lib/demo-mode";
 import { supabase } from "@/lib/supabase";
 import {
@@ -89,12 +89,16 @@ export function useCredits() {
       const customEnabled = isCustomKeyEnabled();
       const headerApiKey = customEnabled ? getZenmuxApiKey() : "";
       const dashscopeApiKey = customEnabled ? getDashscopeApiKey() : "";
+      const mimoApiKey = customEnabled ? getMimoApiKey() : "";
+      const modelscopeApiKey = customEnabled ? getModelscopeApiKey() : "";
       const res = await fetch("/api/credits/consume", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           ...(headerApiKey ? { "X-Zenmux-Api-Key": headerApiKey } : {}),
           ...(dashscopeApiKey ? { "X-Dashscope-Api-Key": dashscopeApiKey } : {}),
+          ...(mimoApiKey ? { "X-Mimo-Api-Key": mimoApiKey } : {}),
+          ...(modelscopeApiKey ? { "X-Modelscope-Api-Key": modelscopeApiKey } : {}),
         },
       });
 
