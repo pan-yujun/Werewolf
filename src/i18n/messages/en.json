@@ -2166,7 +2166,8 @@
       "success": "Found {count} available models",
       "error": "Failed to fetch model list",
       "empty": "Provider returned no models",
-      "available": "Available Models ({count})"
+      "available": "Available Models ({count})",
+      "verifying": "Verifying model availability..."
     },
     "optionalPlaceholder": "Optional",
     "actions": {

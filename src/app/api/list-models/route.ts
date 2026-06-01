@@ -10,12 +10,44 @@ function getMimoModelsUrl(): string {
   const envBase = process.env.MIMO_API_BASE_URL?.trim();
   if (!envBase) return "https://api.mimo.xiaomi.com/v1/models";
   const withoutTrailingSlash = envBase.replace(/\/+$/, "");
-  // Convert chat/completions URL to models URL
   const baseUrl = withoutTrailingSlash.replace(/\/chat\/completions$/, "");
   return `${baseUrl}/models`;
 }
 
 const TIMEOUT_MS = 15000;
+
+// Patterns that indicate a model is NOT a general chat model
+const EXCLUDE_PATTERNS = [
+  /image/i, /edit/i, /vl\b/i, /vision/i,
+  /coder/i, /code\b/i,
+  /embed/i, /rerank/i,
+  /tts/i, /asr/i, /whisper/i,
+  /ocr/i, /translate/i,
+  /det/i, /seg/i, /cls/i,
+  /audio/i, /music/i, /speech/i,
+  /diffusion/i, /flux/i, /stable/i,
+  /gui-owl/i, /compass/i,
+  /antangel/i, /medical/i,
+  /sql/i, /math/i,
+];
+
+// Known non-chat models on ModelScope
+const EXCLUDE_IDS = new Set([
+  "MiniMax/MiniMax-M1-80k",
+  "MiniMax/MiniMax-M2.5",
+  "MiniMax/MiniMax-M2.7",
+  "Qwen/QVQ-72B-Preview",
+  "Qwen/Qwen-Image-Edit",
+  "MusePublic/Qwen-Image-Edit",
+]);
+
+function isChatModel(id: string): boolean {
+  if (EXCLUDE_IDS.has(id)) return false;
+  for (const pattern of EXCLUDE_PATTERNS) {
+    if (pattern.test(id)) return false;
+  }
+  return true;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +61,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve URL: mimo uses env var, others use hardcoded map
     const url = provider === "mimo" ? getMimoModelsUrl() : PROVIDER_MODELS_URL[provider];
 
     console.log(`[list-models] Fetching models for ${provider} from ${url}`);
@@ -38,7 +69,6 @@ export async function POST(request: NextRequest) {
       "Content-Type": "application/json",
     };
 
-    // Some providers need auth, some don't
     if (apiKey && provider !== "modelscope") {
       headers["Authorization"] = `Bearer ${apiKey}`;
     }
@@ -81,11 +111,18 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    const models: string[] = Array.isArray(data?.data)
+    let models: string[] = Array.isArray(data?.data)
       ? data.data
           .map((m: { id?: string }) => m?.id)
           .filter((id: string | undefined): id is string => typeof id === "string" && id.length > 0)
       : [];
+
+    // For ModelScope: filter to chat-capable models only
+    if (provider === "modelscope") {
+      const before = models.length;
+      models = models.filter(isChatModel);
+      console.log(`[list-models] modelscope filtered: ${before} → ${models.length} chat models`);
+    }
 
     console.log(`[list-models] ${provider} returned ${models.length} models`);
     return NextResponse.json({ models });

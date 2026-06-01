@@ -134,6 +134,8 @@ export function UserProfileContent({
   const [fetchedModels, setFetchedModels] = useState<Record<string, string[]>>({});
   const [isFetchingModels, setIsFetchingModels] = useState<Record<string, boolean>>({});
   const [expandedModelList, setExpandedModelList] = useState<Record<string, boolean>>({});
+  const [verifiedModels, setVerifiedModels] = useState<Record<string, Record<string, boolean>>>({});
+  const [isVerifyingModels, setIsVerifyingModels] = useState<Record<string, boolean>>({});
   const [purchaseQuantity, setPurchaseQuantity] = useState(10);
   const [purchaseQuantityInput, setPurchaseQuantityInput] = useState("10");
   const [isPurchasing, setIsPurchasing] = useState(false);
@@ -236,8 +238,20 @@ export function UserProfileContent({
       }
     }
 
-    return [...basePool, ...dynamicModels];
-  }, [dashscopeConfigured, mimoConfigured, modelscopeConfigured, modelPool, zenmuxConfigured, fetchedModels]);
+    const merged = [...basePool, ...dynamicModels];
+
+    // Filter out unverified models when verification results are available
+    const hasAnyVerification = Object.keys(verifiedModels).length > 0;
+    if (!hasAnyVerification) return merged;
+
+    return merged.filter((ref) => {
+      const providerResults = verifiedModels[ref.provider];
+      // If no verification results for this provider, keep the model (hardcoded or not yet verified)
+      if (!providerResults) return true;
+      // If verification results exist, only keep verified models
+      return providerResults[ref.model] !== false;
+    });
+  }, [dashscopeConfigured, mimoConfigured, modelscopeConfigured, modelPool, zenmuxConfigured, fetchedModels, verifiedModels]);
   const defaultAvailableModels = useMemo(() => {
     const providers = new Set<ModelRef["provider"]>();
     if (zenmuxConfigured) providers.add("zenmux");
@@ -573,9 +587,11 @@ export function UserProfileContent({
 
       setFetchedModels((prev) => ({ ...prev, [provider]: models }));
       setExpandedModelList((prev) => ({ ...prev, [provider]: true }));
-      // Persist to localStorage so sampleModelRefs() can access during game start
       setFetchedModelsForProvider(provider, models);
       toast(t("customKey.fetchModels.success", { count: models.length }));
+
+      // Start verification in background
+      verifyProviderModels(provider, apiKey, models);
     } catch (error) {
       console.error(`[fetchProviderModels] ${provider} error:`, error);
       toast(t("customKey.fetchModels.error"), {
@@ -583,6 +599,37 @@ export function UserProfileContent({
       });
     } finally {
       setIsFetchingModels((prev) => ({ ...prev, [provider]: false }));
+    }
+  };
+
+  const verifyProviderModels = async (provider: string, apiKey: string, models: string[]) => {
+    setIsVerifyingModels((prev) => ({ ...prev, [provider]: true }));
+    try {
+      const response = await fetch("/api/verify-models", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Provider": provider,
+          ...(apiKey ? { "X-Api-Key": apiKey } : {}),
+        },
+        body: JSON.stringify({ models }),
+      });
+
+      if (!response.ok) {
+        console.warn(`[verifyProviderModels] ${provider} verification failed: ${response.status}`);
+        return;
+      }
+
+      const result = await response.json();
+      const results: Record<string, boolean> = result?.results || {};
+      setVerifiedModels((prev) => ({ ...prev, [provider]: results }));
+
+      const validCount = Object.values(results).filter(Boolean).length;
+      console.log(`[verifyProviderModels] ${provider}: ${validCount}/${models.length} verified`);
+    } catch (error) {
+      console.warn(`[verifyProviderModels] ${provider} error:`, error);
+    } finally {
+      setIsVerifyingModels((prev) => ({ ...prev, [provider]: false }));
     }
   };
 
@@ -983,12 +1030,19 @@ export function UserProfileContent({
                       </button>
                       {expandedModelList.zenmux && (
                         <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 space-y-0.5">
-                          {fetchedModels.zenmux.map((modelId) => (
-                            <div key={modelId} className="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-0.5">
-                              <img src={getModelLogoPath({ provider: "zenmux", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
-                              <span className="truncate">{modelId}</span>
-                            </div>
-                          ))}
+                          {isVerifyingModels.zenmux && <div className="text-xs text-[var(--text-muted)] py-1">{t("customKey.fetchModels.verifying")}</div>}
+                          {fetchedModels.zenmux.map((modelId) => {
+                            const verified = verifiedModels.zenmux?.[modelId];
+                            const unverified = verifiedModels.zenmux && !verified;
+                            return (
+                              <div key={modelId} className={`flex items-center gap-2 text-xs py-0.5 ${unverified ? "opacity-40 line-through" : "text-[var(--text-secondary)]"}`}>
+                                <img src={getModelLogoPath({ provider: "zenmux", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
+                                <span className="truncate flex-1">{modelId}</span>
+                                {verified && <span className="text-[var(--color-success)] text-[10px]">✓</span>}
+                                {unverified && <span className="text-[var(--text-muted)] text-[10px]">✗</span>}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -1048,12 +1102,19 @@ export function UserProfileContent({
                       </button>
                       {expandedModelList.dashscope && (
                         <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 space-y-0.5">
-                          {fetchedModels.dashscope.map((modelId) => (
-                            <div key={modelId} className="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-0.5">
-                              <img src={getModelLogoPath({ provider: "dashscope", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
-                              <span className="truncate">{modelId}</span>
-                            </div>
-                          ))}
+                          {isVerifyingModels.dashscope && <div className="text-xs text-[var(--text-muted)] py-1">{t("customKey.fetchModels.verifying")}</div>}
+                          {fetchedModels.dashscope.map((modelId) => {
+                            const verified = verifiedModels.dashscope?.[modelId];
+                            const unverified = verifiedModels.dashscope && !verified;
+                            return (
+                              <div key={modelId} className={`flex items-center gap-2 text-xs py-0.5 ${unverified ? "opacity-40 line-through" : "text-[var(--text-secondary)]"}`}>
+                                <img src={getModelLogoPath({ provider: "dashscope", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
+                                <span className="truncate flex-1">{modelId}</span>
+                                {verified && <span className="text-[var(--color-success)] text-[10px]">✓</span>}
+                                {unverified && <span className="text-[var(--text-muted)] text-[10px]">✗</span>}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -1105,12 +1166,19 @@ export function UserProfileContent({
                       </button>
                       {expandedModelList.mimo && (
                         <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 space-y-0.5">
-                          {fetchedModels.mimo.map((modelId) => (
-                            <div key={modelId} className="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-0.5">
-                              <img src={getModelLogoPath({ provider: "mimo", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
-                              <span className="truncate">{modelId}</span>
-                            </div>
-                          ))}
+                          {isVerifyingModels.mimo && <div className="text-xs text-[var(--text-muted)] py-1">{t("customKey.fetchModels.verifying")}</div>}
+                          {fetchedModels.mimo.map((modelId) => {
+                            const verified = verifiedModels.mimo?.[modelId];
+                            const unverified = verifiedModels.mimo && !verified;
+                            return (
+                              <div key={modelId} className={`flex items-center gap-2 text-xs py-0.5 ${unverified ? "opacity-40 line-through" : "text-[var(--text-secondary)]"}`}>
+                                <img src={getModelLogoPath({ provider: "mimo", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
+                                <span className="truncate flex-1">{modelId}</span>
+                                {verified && <span className="text-[var(--color-success)] text-[10px]">✓</span>}
+                                {unverified && <span className="text-[var(--text-muted)] text-[10px]">✗</span>}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -1169,12 +1237,19 @@ export function UserProfileContent({
                       </button>
                       {expandedModelList.modelscope && (
                         <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 space-y-0.5">
-                          {fetchedModels.modelscope.map((modelId) => (
-                            <div key={modelId} className="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-0.5">
-                              <img src={getModelLogoPath({ provider: "modelscope", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
-                              <span className="truncate">{modelId}</span>
-                            </div>
-                          ))}
+                          {isVerifyingModels.modelscope && <div className="text-xs text-[var(--text-muted)] py-1">{t("customKey.fetchModels.verifying")}</div>}
+                          {fetchedModels.modelscope.map((modelId) => {
+                            const verified = verifiedModels.modelscope?.[modelId];
+                            const unverified = verifiedModels.modelscope && !verified;
+                            return (
+                              <div key={modelId} className={`flex items-center gap-2 text-xs py-0.5 ${unverified ? "opacity-40 line-through" : "text-[var(--text-secondary)]"}`}>
+                                <img src={getModelLogoPath({ provider: "modelscope", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
+                                <span className="truncate flex-1">{modelId}</span>
+                                {verified && <span className="text-[var(--color-success)] text-[10px]">✓</span>}
+                                {unverified && <span className="text-[var(--text-muted)] text-[10px]">✗</span>}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

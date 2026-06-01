@@ -2248,7 +2248,8 @@
       "success": "获取到 {count} 个可用模型",
       "error": "获取模型列表失败",
       "empty": "该 provider 未返回模型列表",
-      "available": "可用模型 ({count})"
+      "available": "可用模型 ({count})",
+      "verifying": "正在验证模型可用性..."
     },
     "optionalPlaceholder": "可选",
     "actions": {

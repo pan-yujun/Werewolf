@@ -381,10 +381,8 @@ export const ALL_MODELS: ModelRef[] = [
   { provider: "modelscope", model: MODEL_IDS.modelscope.deepseekR1, reasoning: { enabled: true } },
   { provider: "modelscope", model: MODEL_IDS.modelscope.qwen3_32b },
   { provider: "modelscope", model: MODEL_IDS.modelscope.qwen3_235b },
-  { provider: "modelscope", model: MODEL_IDS.modelscope.glm47 },
   { provider: "modelscope", model: MODEL_IDS.modelscope.glm5 },
   { provider: "modelscope", model: MODEL_IDS.modelscope.kimiK25 },
-  { provider: "modelscope", model: MODEL_IDS.modelscope.minimaxM27 },
   { provider: "modelscope", model: MODEL_IDS.modelscope.mimoV2 },
 ];
 
