@@ -15,6 +15,7 @@ const VALIDATED_DASHSCOPE_KEY_STORAGE = "wolfcha_validated_dashscope_key";
 const VALIDATED_MIMO_KEY_STORAGE = "wolfcha_validated_mimo_key";
 const MODELSCOPE_API_KEY_STORAGE = "wolfcha_modelscope_api_key";
 const VALIDATED_MODELSCOPE_KEY_STORAGE = "wolfcha_validated_modelscope_key";
+const FETCHED_MODELS_STORAGE = "wolfcha_fetched_models";
 
 function canUseStorage(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
@@ -270,6 +271,27 @@ export function setReviewModel(model: string) {
   writeStorage(REVIEW_MODEL_STORAGE, model);
 }
 
+// Persisted fetched models per provider (for sampleModelRefs to access outside React)
+export function getFetchedModels(): Record<string, string[]> {
+  if (!canUseStorage()) return {};
+  const raw = window.localStorage.getItem(FETCHED_MODELS_STORAGE);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as Record<string, string[]>;
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+export function setFetchedModelsForProvider(provider: string, models: string[]) {
+  if (!canUseStorage()) return;
+  const existing = getFetchedModels();
+  existing[provider] = models;
+  window.localStorage.setItem(FETCHED_MODELS_STORAGE, JSON.stringify(existing));
+}
+
 export function clearApiKeys() {
   if (!canUseStorage()) return;
   window.localStorage.removeItem(ZENMUX_API_KEY_STORAGE);
@@ -287,6 +309,7 @@ export function clearApiKeys() {
   window.localStorage.removeItem(VALIDATED_MIMO_KEY_STORAGE);
   window.localStorage.removeItem(MODELSCOPE_API_KEY_STORAGE);
   window.localStorage.removeItem(VALIDATED_MODELSCOPE_KEY_STORAGE);
+  window.localStorage.removeItem(FETCHED_MODELS_STORAGE);
 }
 
 export interface KeyValidationResult {

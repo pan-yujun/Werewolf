@@ -14,6 +14,7 @@ import { useTranslations } from "next-intl";
 import {
   clearApiKeys,
   getDashscopeApiKey,
+  getFetchedModels,
   getGeneratorModel,
   getMinimaxApiKey,
   getMinimaxGroupId,
@@ -38,6 +39,7 @@ import {
   setZenmuxApiKey,
   setDashscopeApiKey,
   setCustomKeyEnabled,
+  setFetchedModelsForProvider,
   setValidatedZenmuxKey,
   setValidatedDashscopeKey,
   setValidatedMimoKey,
@@ -184,6 +186,14 @@ export function UserProfileContent({
         mimo: m && getValidatedMimoKey() === m ? m : "",
         modelscope: ms && getValidatedModelscopeKey() === ms ? ms : "",
       });
+      // Restore fetched models from localStorage
+      const storedFetched = getFetchedModels();
+      if (Object.keys(storedFetched).length > 0) {
+        setFetchedModels(storedFetched);
+        const expanded: Record<string, boolean> = {};
+        for (const k of Object.keys(storedFetched)) expanded[k] = true;
+        setExpandedModelList(expanded);
+      }
     }
     return () => {
       mounted = false;
@@ -372,6 +382,7 @@ export function UserProfileContent({
     setZenmuxApiKey(zenmuxKey);
     setDashscopeApiKey(dashscopeKey);
     setMimoApiKey(mimoKey);
+    setModelscopeApiKey(modelscopeKey);
     setMinimaxApiKey(minimaxKey);
     setMinimaxGroupId(minimaxGroupId);
     setSelectedModels(nextSelectedModels);
@@ -562,6 +573,8 @@ export function UserProfileContent({
 
       setFetchedModels((prev) => ({ ...prev, [provider]: models }));
       setExpandedModelList((prev) => ({ ...prev, [provider]: true }));
+      // Persist to localStorage so sampleModelRefs() can access during game start
+      setFetchedModelsForProvider(provider, models);
       toast(t("customKey.fetchModels.success", { count: models.length }));
     } catch (error) {
       console.error(`[fetchProviderModels] ${provider} error:`, error);
