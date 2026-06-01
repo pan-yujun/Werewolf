@@ -155,10 +155,12 @@ export function UserProfileContent({
 
   useEffect(() => {
     let mounted = true;
-    const nextZenmuxKey = getZenmuxApiKey();
-    const nextDashscopeKey = getDashscopeApiKey();
-    const nextMimoKey = getMimoApiKey();
-    const nextModelscopeKey = getModelscopeApiKey();
+
+    // Load keys from localStorage first
+    let z = getZenmuxApiKey();
+    let d = getDashscopeApiKey();
+    let m = getMimoApiKey();
+    let ms = getModelscopeApiKey();
     const nextMinimaxKey = getMinimaxApiKey();
     const nextMinimaxGroupId = getMinimaxGroupId();
     const nextSelectedModels = getSelectedModels();
@@ -166,11 +168,12 @@ export function UserProfileContent({
     const nextSummaryModel = getSummaryModel();
     const nextReviewModel = getReviewModel();
     const storedCustomEnabled = getCustomKeyEnabled();
+
     if (mounted) {
-      setZenmuxKeyState(nextZenmuxKey);
-      setDashscopeKeyState(nextDashscopeKey);
-      setMimoKeyState(nextMimoKey);
-      setModelscopeKeyState(nextModelscopeKey);
+      setZenmuxKeyState(z);
+      setDashscopeKeyState(d);
+      setMimoKeyState(m);
+      setModelscopeKeyState(ms);
       setMinimaxKeyState(nextMinimaxKey);
       setMinimaxGroupIdState(nextMinimaxGroupId);
       setSelectedModelsState(nextSelectedModels);
@@ -178,10 +181,6 @@ export function UserProfileContent({
       setSummaryModelState(nextSummaryModel);
       setReviewModelState(nextReviewModel);
       setIsCustomKeyEnabled(storedCustomEnabled);
-      const z = nextZenmuxKey;
-      const d = nextDashscopeKey;
-      const m = nextMimoKey;
-      const ms = nextModelscopeKey;
       setValidatedKeys({
         zenmux: z && getValidatedZenmuxKey() === z ? z : "",
         dashscope: d && getValidatedDashscopeKey() === d ? d : "",
@@ -197,6 +196,29 @@ export function UserProfileContent({
         setExpandedModelList(expanded);
       }
     }
+
+    // Fetch pre-configured keys from .env.local and fill empty fields
+    fetch("/api/preconfigured-keys")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!mounted || !data?.keys) return;
+        const pre = data.keys as Record<string, string>;
+        let hasNewKey = false;
+
+        if (!z && pre.zenmux) { z = pre.zenmux; setZenmuxKeyState(z); setZenmuxApiKey(z); hasNewKey = true; }
+        if (!d && pre.dashscope) { d = pre.dashscope; setDashscopeKeyState(d); setDashscopeApiKey(d); hasNewKey = true; }
+        if (!m && pre.mimo) { m = pre.mimo; setMimoKeyState(m); setMimoApiKey(m); hasNewKey = true; }
+        if (!ms && pre.modelscope) { ms = pre.modelscope; setModelscopeKeyState(ms); setModelscopeApiKey(ms); hasNewKey = true; }
+        if (!nextMinimaxKey && pre.minimax) { setMinimaxKeyState(pre.minimax); setMinimaxApiKey(pre.minimax); }
+        if (!nextMinimaxGroupId && pre.minimaxGroupId) { setMinimaxGroupIdState(pre.minimaxGroupId); setMinimaxGroupId(pre.minimaxGroupId); }
+
+        if (hasNewKey && !storedCustomEnabled) {
+          setIsCustomKeyEnabled(true);
+          setCustomKeyEnabled(true);
+        }
+      })
+      .catch(() => { /* ignore - preconfigured keys are optional */ });
+
     return () => {
       mounted = false;
     };
