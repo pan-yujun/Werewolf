@@ -372,8 +372,14 @@ export function WelcomeScreen({
     });
   }, []);
 
-  // Available models for per-character assignment
-  const availableModels = useMemo(() => getAvailablePlayerModelPool(), []);
+  // Available models for per-character assignment (re-computes when model pool changes in settings)
+  const [modelPoolVersion, setModelPoolVersion] = useState(0);
+  useEffect(() => {
+    const handler = () => setModelPoolVersion(v => v + 1);
+    window.addEventListener("wolfcha-model-pool-changed", handler);
+    return () => window.removeEventListener("wolfcha-model-pool-changed", handler);
+  }, []);
+  const availableModels = useMemo(() => getAvailablePlayerModelPool(), [modelPoolVersion]);
 
   const customCharacters = useCustomCharacters(user);
   const [difficulty, setDifficulty] = useAtom(difficultyAtom);

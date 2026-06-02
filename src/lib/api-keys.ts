@@ -188,6 +188,7 @@ export function setCustomKeyEnabled(value: boolean) {
     window.localStorage.removeItem(SUMMARY_MODEL_STORAGE);
     window.localStorage.removeItem(REVIEW_MODEL_STORAGE);
   }
+  window.dispatchEvent(new Event("wolfcha-model-pool-changed"));
 }
 
 export function getSelectedModels(): string[] {
@@ -208,14 +209,17 @@ export function setSelectedModels(models: string[]) {
   if (!canUseStorage()) return;
   if (!isCustomKeyEnabled()) {
     window.localStorage.removeItem(SELECTED_MODELS_STORAGE);
+    window.dispatchEvent(new Event("wolfcha-model-pool-changed"));
     return;
   }
   const normalized = models.map((m) => String(m ?? "").trim()).filter(Boolean);
   if (normalized.length === 0) {
     window.localStorage.removeItem(SELECTED_MODELS_STORAGE);
+    window.dispatchEvent(new Event("wolfcha-model-pool-changed"));
     return;
   }
   window.localStorage.setItem(SELECTED_MODELS_STORAGE, JSON.stringify(normalized));
+  window.dispatchEvent(new Event("wolfcha-model-pool-changed"));
 }
 
 export function getGeneratorModel(): string {
@@ -290,6 +294,7 @@ export function setFetchedModelsForProvider(provider: string, models: string[]) 
   const existing = getFetchedModels();
   existing[provider] = models;
   window.localStorage.setItem(FETCHED_MODELS_STORAGE, JSON.stringify(existing));
+  window.dispatchEvent(new Event("wolfcha-model-pool-changed"));
 }
 
 export function clearApiKeys() {
