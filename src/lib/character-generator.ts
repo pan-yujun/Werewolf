@@ -61,76 +61,64 @@ function getModelRefForModel(model: string): ModelRef {
   );
 }
 
-export const sampleModelRefs = (count: number): ModelRef[] => {
-  // Default pool when custom key is not enabled
+/**
+ * Build the full available model pool for AI players based on API keys and user selection.
+ * Does NOT shuffle or sample — returns all eligible models.
+ */
+export const getAvailablePlayerModelPool = (): ModelRef[] => {
   const defaultPool =
     PLAYER_MODELS.length > 0
       ? PLAYER_MODELS
       : [getModelRefForModel(GENERATOR_MODEL)];
 
-  const pool = (() => {
-    if (!isCustomKeyEnabled()) return defaultPool;
+  if (!isCustomKeyEnabled()) return defaultPool;
 
-    // When custom key is enabled, use ALL_MODELS as the full available pool
-    const fullPool = ALL_MODELS.length > 0 ? ALL_MODELS : defaultPool;
+  const fullPool = ALL_MODELS.length > 0 ? ALL_MODELS : defaultPool;
 
-    const allowedProviders = new Set<ModelRef["provider"]>();
-    if (hasZenmuxKey()) allowedProviders.add("zenmux");
-    if (hasDashscopeKey()) allowedProviders.add("dashscope");
-    if (hasMimoKey()) allowedProviders.add("mimo");
-    if (hasModelscopeKey()) allowedProviders.add("modelscope");
-    if (allowedProviders.size === 0) return defaultPool;
+  const allowedProviders = new Set<ModelRef["provider"]>();
+  if (hasZenmuxKey()) allowedProviders.add("zenmux");
+  if (hasDashscopeKey()) allowedProviders.add("dashscope");
+  if (hasMimoKey()) allowedProviders.add("mimo");
+  if (hasModelscopeKey()) allowedProviders.add("modelscope");
+  if (allowedProviders.size === 0) return defaultPool;
 
-    // Merge dynamically fetched models from localStorage
-    const fetched = getFetchedModels();
-    console.log("[sampleModelRefs] allowedProviders:", [...allowedProviders]);
-    console.log("[sampleModelRefs] fetched models keys:", Object.keys(fetched), "counts:", Object.fromEntries(Object.entries(fetched).map(([k, v]) => [k, v.length])));
-    const mergedPool: ModelRef[] = [...fullPool];
-    const existingKeys = new Set(fullPool.map((r) => `${r.provider}:${r.model}`));
-    for (const provider of allowedProviders) {
-      const providerModels = fetched[provider];
-      if (!providerModels) continue;
-      for (const modelId of providerModels) {
-        const key = `${provider}:${modelId}`;
-        if (!existingKeys.has(key)) {
-          existingKeys.add(key);
-          mergedPool.push({ provider, model: modelId });
-        }
+  const fetched = getFetchedModels();
+  const mergedPool: ModelRef[] = [...fullPool];
+  const existingKeys = new Set(fullPool.map((r) => `${r.provider}:${r.model}`));
+  for (const provider of allowedProviders) {
+    const providerModels = fetched[provider];
+    if (!providerModels) continue;
+    for (const modelId of providerModels) {
+      const key = `${provider}:${modelId}`;
+      if (!existingKeys.has(key)) {
+        existingKeys.add(key);
+        mergedPool.push({ provider, model: modelId });
       }
     }
+  }
 
-    // Filter by allowed providers, then exclude non-player models
-    const allowedPool = filterPlayerModels(
-      mergedPool.filter((ref) => allowedProviders.has(ref.provider))
+  const allowedPool = filterPlayerModels(
+    mergedPool.filter((ref) => allowedProviders.has(ref.provider))
+  );
+  if (allowedPool.length === 0) return defaultPool;
+
+  const selectedModels = getSelectedModels();
+  if (selectedModels.length === 0) return allowedPool;
+
+  const selectedPool = allowedPool.filter((ref) => selectedModels.includes(ref.model));
+
+  if (selectedPool.length === 0) {
+    const fullSelectedPool = filterPlayerModels(
+      fullPool.filter((ref) => selectedModels.includes(ref.model) && allowedProviders.has(ref.provider))
     );
-    if (allowedPool.length === 0) return defaultPool;
+    if (fullSelectedPool.length > 0) return fullSelectedPool;
+  }
 
-    // Filter by user's selected models - STRICTLY respect user selection
-    const selectedModels = getSelectedModels();
-    console.log("[sampleModelRefs] selectedModels:", selectedModels);
-    console.log("[sampleModelRefs] allowedPool size:", allowedPool.length, "sample:", allowedPool.slice(0, 5).map(r => r.model));
-    if (selectedModels.length === 0) return allowedPool;
-    
-    // Only use models the user explicitly selected
-    const selectedPool = allowedPool.filter((ref) => selectedModels.includes(ref.model));
-    console.log("[sampleModelRefs] selectedPool size:", selectedPool.length, "models:", selectedPool.map(r => `${r.provider}:${r.model}`));
+  return selectedPool.length > 0 ? selectedPool : allowedPool.slice(0, 1);
+};
 
-    // If user selected models but none are in allowedPool, try to find them in fullPool
-    // This handles cases where user selected models from a different provider
-    if (selectedPool.length === 0) {
-      const fullSelectedPool = filterPlayerModels(
-        fullPool.filter((ref) => selectedModels.includes(ref.model) && allowedProviders.has(ref.provider))
-      );
-      if (fullSelectedPool.length > 0) return fullSelectedPool;
-      
-      // Last resort: only return models that user actually selected, even if empty
-      // This prevents using models the user didn't choose
-      console.warn("[sampleModelRefs] User selected models not found in allowed pool:", selectedModels);
-    }
-    
-    // Return only user-selected models, never fall back to all models
-    return selectedPool.length > 0 ? selectedPool : allowedPool.slice(0, 1);
-  })();
+export const sampleModelRefs = (count: number): ModelRef[] => {
+  const pool = getAvailablePlayerModelPool();
 
   if (!Number.isFinite(count) || count <= 0) return [];
 

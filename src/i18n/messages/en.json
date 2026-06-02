@@ -2197,6 +2197,8 @@
     "editDescription": "Modify character info",
     "emptyState": "No custom characters yet. Click to add one.",
     "selectionHint": "{count} character(s) selected to join (click to select/deselect)",
+    "modelAssignment": "Model Assignment",
+    "useDefault": "Use global default",
     "noInfo": "Not set",
     "addNew": "Add",
     "mbtiNotSet": "Not set",

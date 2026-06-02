@@ -2279,6 +2279,8 @@
     "editDescription": "修改角色信息",
     "emptyState": "还没有自定义角色，点击添加按钮创建",
     "selectionHint": "已选择 {count} 个角色参战（点击选择/取消）",
+    "modelAssignment": "模型分配",
+    "useDefault": "跟随全局设置",
     "noInfo": "未设置",
     "addNew": "添加",
     "mbtiNotSet": "不设置",

@@ -20,6 +20,8 @@ export interface CustomCharacterData {
   basic_info?: string;
   style_label?: string;
   avatar_seed?: string;
+  /** User-assigned model for this character; undefined = use random from pool */
+  modelRef?: ModelRef;
 }
 
 export interface StartGameOptions {

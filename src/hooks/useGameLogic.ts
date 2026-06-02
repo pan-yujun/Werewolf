@@ -1475,6 +1475,8 @@ export function useGameLogic() {
         },
         avatarSeed: cc.avatar_seed || undefined,
       }));
+      // Per-character model overrides (undefined = use random from pool)
+      const customModelRefs = customCharsToUse.map((cc) => cc.modelRef);
 
       const applyCustomCharactersToState = (customList: GeneratedCharacter[]) => {
         if (customList.length === 0) return;
@@ -1495,7 +1497,7 @@ export function useGameLogic() {
               displayName: match.character.displayName,
               avatarSeed: match.character.avatarSeed ?? pl.avatarSeed ?? pl.playerId,
               agentProfile: {
-                modelRef: aiModelRefs[match.index] ?? getRandomModelRef(),
+                modelRef: customModelRefs[match.index] ?? aiModelRefs[match.index] ?? getRandomModelRef(),
                 persona: match.character.persona,
                 playerMind: match.character.playerMind,
               },
@@ -1538,7 +1540,7 @@ export function useGameLogic() {
                   displayName: character.displayName,
                   avatarSeed: character.avatarSeed ?? pl.avatarSeed ?? pl.playerId,
                   agentProfile: {
-                    modelRef: aiModelRefs[index] ?? getRandomModelRef(),
+                    modelRef: customModelRefs[index] ?? aiModelRefs[index] ?? getRandomModelRef(),
                     persona: character.persona,
                     playerMind: character.playerMind,
                   },

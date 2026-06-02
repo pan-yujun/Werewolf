@@ -10,7 +10,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtom } from "jotai";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import type { DevPreset, DifficultyLevel, Role, StartGameOptions } from "@/types/game";
+import type { DevPreset, DifficultyLevel, Role, StartGameOptions, ModelRef } from "@/types/game";
+import { getAvailablePlayerModelPool } from "@/lib/character-generator";
 import { DevModeButton } from "@/components/DevTools";
 import { GameSetupModal } from "@/components/game/GameSetupModal";
 import { AuthModal } from "@/components/game/AuthModal";
@@ -55,6 +56,7 @@ type SponsorCardProps = {
 };
 
 const CUSTOM_CHARACTER_SELECTION_STORAGE_KEY = "wolfcha_custom_character_selection";
+const CHARACTER_MODEL_STORAGE_KEY = "wolfcha_character_models";
 
 // Track sponsor click
 async function trackSponsorClick(sponsorId: string) {
@@ -326,6 +328,52 @@ export function WelcomeScreen({
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<Set<string>>(() =>
     readSelectionFromStorage()
   );
+
+  // Per-character model assignments (persisted to localStorage)
+  const characterModelStorageKey = useMemo(() => {
+    return user?.id
+      ? `${CHARACTER_MODEL_STORAGE_KEY}:${user.id}`
+      : CHARACTER_MODEL_STORAGE_KEY;
+  }, [user?.id]);
+
+  const [characterModels, setCharacterModels] = useState<Map<string, ModelRef>>(() => {
+    if (typeof window === "undefined") return new Map();
+    try {
+      const raw = window.localStorage.getItem(
+        user?.id ? `${CHARACTER_MODEL_STORAGE_KEY}:${user.id}` : CHARACTER_MODEL_STORAGE_KEY
+      );
+      if (!raw) return new Map();
+      const parsed = JSON.parse(raw) as Record<string, ModelRef>;
+      return new Map(Object.entries(parsed));
+    } catch {
+      return new Map();
+    }
+  });
+
+  // Persist character models to localStorage on change
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const obj: Record<string, ModelRef> = {};
+      characterModels.forEach((v, k) => { obj[k] = v; });
+      window.localStorage.setItem(characterModelStorageKey, JSON.stringify(obj));
+    } catch { /* ignore */ }
+  }, [characterModels, characterModelStorageKey]);
+
+  const handleCharacterModelChange = useCallback((characterId: string, modelRef: ModelRef | null) => {
+    setCharacterModels(prev => {
+      const next = new Map(prev);
+      if (modelRef) {
+        next.set(characterId, modelRef);
+      } else {
+        next.delete(characterId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Available models for per-character assignment
+  const availableModels = useMemo(() => getAvailablePlayerModelPool(), []);
 
   const customCharacters = useCustomCharacters(user);
   const [difficulty, setDifficulty] = useAtom(difficultyAtom);
@@ -674,6 +722,7 @@ export function WelcomeScreen({
           basic_info: c.basic_info,
           style_label: c.style_label,
           avatar_seed: c.avatar_seed,
+          modelRef: characterModels.get(c.id) ?? undefined,
         }));
 
       void onStart({
@@ -732,6 +781,7 @@ export function WelcomeScreen({
           basic_info: c.basic_info,
           style_label: c.style_label,
           avatar_seed: c.avatar_seed,
+          modelRef: characterModels.get(c.id) ?? undefined,
         }));
 
       void onStart({
@@ -866,6 +916,9 @@ export function WelcomeScreen({
           onCreateCharacter={customCharacters.createCharacter}
           onUpdateCharacter={customCharacters.updateCharacter}
           onDeleteCharacter={customCharacters.deleteCharacter}
+          characterModels={characterModels}
+          onCharacterModelChange={handleCharacterModelChange}
+          availableModels={availableModels}
         />
 
         <Dialog

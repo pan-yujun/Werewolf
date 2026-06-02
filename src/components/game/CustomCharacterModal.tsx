@@ -10,6 +10,7 @@ import type { CustomCharacter, CustomCharacterInput } from "@/types/custom-chara
 import { MBTI_OPTIONS, GENDER_OPTIONS, FIELD_LIMITS, MAX_CUSTOM_CHARACTERS } from "@/types/custom-character";
 import { buildAvatarUrl } from "@/lib/avatar-config";
 import type { Gender } from "@/lib/character-generator";
+import type { ModelRef } from "@/types/game";
 import { LLMJSONParser } from "ai-json-fixer";
 
 interface CustomCharacterModalProps {
@@ -24,6 +25,12 @@ interface CustomCharacterModalProps {
   onCreateCharacter: (input: CustomCharacterInput) => Promise<CustomCharacter | null>;
   onUpdateCharacter: (id: string, input: Partial<CustomCharacterInput>) => Promise<CustomCharacter | null>;
   onDeleteCharacter: (id: string) => Promise<boolean>;
+  /** Per-character model assignments; key = character id */
+  characterModels: Map<string, ModelRef>;
+  /** Called when user changes a character's model; null means "use default" */
+  onCharacterModelChange: (characterId: string, modelRef: ModelRef | null) => void;
+  /** Available models for AI players (filtered by API keys and user selection) */
+  availableModels: ModelRef[];
 }
 
 type ViewMode = "list" | "create" | "edit";
@@ -40,6 +47,9 @@ export function CustomCharacterModal({
   onCreateCharacter,
   onUpdateCharacter,
   onDeleteCharacter,
+  characterModels,
+  onCharacterModelChange,
+  availableModels,
 }: CustomCharacterModalProps) {
   const t = useTranslations();
   const [view, setView] = useState<ViewMode>("list");
@@ -437,10 +447,12 @@ export function CustomCharacterModal({
             <div className="flex flex-wrap gap-2 max-h-[45vh] overflow-y-auto p-1">
               {characters.map((char) => {
                 const isSelected = selectedIds.has(char.id);
+                const assignedModel = characterModels.get(char.id);
+                const currentModel = assignedModel?.model ?? "";
                 return (
                   <div
                     key={char.id}
-                    className={`relative w-[110px] flex flex-col items-center p-2 rounded-lg border-2 transition-all cursor-pointer group ${
+                    className={`relative w-[120px] flex flex-col items-center p-2 rounded-lg border-2 transition-all cursor-pointer group ${
                       isSelected
                         ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
                         : "border-[var(--border-color)] bg-[var(--bg-card)] hover:border-[var(--text-muted)]"
@@ -494,10 +506,37 @@ export function CustomCharacterModal({
                       {char.style_label || char.mbti || t("customCharacter.noInfo")}
                     </div>
 
+                    {/* Model selector */}
+                    {availableModels.length > 0 && (
+                      <select
+                        value={currentModel}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          const val = e.target.value;
+                          if (!val) {
+                            onCharacterModelChange(char.id, null);
+                          } else {
+                            const ref = availableModels.find(m => m.model === val);
+                            if (ref) onCharacterModelChange(char.id, ref);
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-1 w-full h-6 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[10px] text-[var(--text-primary)] px-1 focus:outline-none focus:border-[var(--color-accent)] truncate"
+                        title={currentModel || t("customCharacter.useDefault")}
+                      >
+                        <option value="">{t("customCharacter.useDefault")}</option>
+                        {availableModels.map((m) => (
+                          <option key={`${m.provider}:${m.model}`} value={m.model}>
+                            {m.model}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setDetailCharacter(char); }}
-                      className="mt-2 w-full h-8 rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[11px] font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap"
+                      className="mt-1 w-full h-7 rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[11px] font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap"
                     >
                       <Eye size={14} />
                       {t("customCharacter.actions.viewDetail")}
