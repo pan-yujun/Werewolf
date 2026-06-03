@@ -60,6 +60,7 @@ import { useDialogueManager, type DialogueState } from "./useDialogueManager";
 import { useDayPhase } from "./game-phases/useDayPhase";
 import { useBadgePhase } from "./game-phases/useBadgePhase";
 import { useSpecialEvents } from "./game-phases/useSpecialEvents";
+import { useReplayRecorder } from "./useReplayRecorder";
 
 function getModelRefForModel(model: string): ModelRef {
   return (
@@ -165,6 +166,11 @@ export function useGameLogic() {
   const badgeSpeechEndRef = useRef<((state: GameState) => Promise<void>) | null>(null);
 
   // ============================================
+  // 回放记录器
+  // ============================================
+  const replay = useReplayRecorder();
+
+  // ============================================
   // 对话管理
   // ============================================
   const dialogue = useDialogueManager();
@@ -259,6 +265,10 @@ export function useGameLogic() {
           await fn(state, player);
         }
       },
+      onRecordVoteCast: (voterSeat: number, targetSeat: number, reason: string | undefined, isHuman: boolean, isSheriffVote: boolean, phase: string, day: number) =>
+        replay.recordVoteCast(voterSeat, targetSeat, reason, isHuman, isSheriffVote, phase as Phase, day),
+      onRecordVoteResult: (eliminated: number | null, dist: Record<string, number[]>, isTie: boolean, isPK: boolean, pkRound: number, phase: string, day: number) =>
+        replay.recordVoteResult(eliminated, dist, isTie, isPK, pkRound, phase as Phase, day),
     };
   }, [getToken, humanPlayer, isTokenValid, setDialogue, setGameState, setIsWaitingForAI, waitForUnpause]);
 
@@ -378,6 +388,10 @@ export function useGameLogic() {
     const prevPhase = phaseLifecycleRef.current;
     const nextPhase = gameState.phase;
     if (prevPhase === nextPhase) return;
+
+    // 记录阶段转换到回放
+    replay.recordPhaseExit(prevPhase, gameState.day);
+    replay.recordPhaseEnter(nextPhase, gameState.day);
 
     const manager = phaseManagerRef.current;
     const prevImpl = manager.getPhase(prevPhase);
@@ -522,6 +536,9 @@ export function useGameLogic() {
     isTokenValid,
     getAccessToken,
     prepareFinalState: (state) => maybeGenerateDailySummary(state, { force: true }),
+    onRecordNightResolve: (deaths, day) => replay.recordNightResolve(deaths, day),
+    onRecordHunterShoot: (hunterSeat, targetSeat, diedAtNight, isHuman, phase, day) =>
+      replay.recordHunterShoot(hunterSeat, targetSeat, diedAtNight, isHuman, phase as Phase, day),
   });
 
   const { endGame, resolveNight } = specialEvents;
@@ -532,6 +549,8 @@ export function useGameLogic() {
       clearDialogue();
       setIsWaitingForAI(false);
       setWaitingForNextRound(false);
+      // 完成回放记录
+      replay.finishRecording(state.gameId, winner, state);
       await endGame(state, winner);
     },
     [clearDialogue, clearSpeechQueue, endGame, setIsWaitingForAI, setWaitingForNextRound]
@@ -601,6 +620,8 @@ export function useGameLogic() {
     setPrefetchedSpeech,
     consumePrefetchedSpeech,
     setAfterLastWords: (cb) => { afterLastWordsRef.current = cb; },
+    onRecordSpeechSegment: (seat, name, content, idx, isHuman, isLastWords, phase, day) =>
+      replay.recordSpeechSegment(seat, name, content, idx, isHuman, isLastWords, phase, day),
   });
 
   const { startLastWordsPhase, runAISpeech } = dayPhase;
@@ -629,6 +650,16 @@ export function useGameLogic() {
     runAISpeech: async (state, player) => {
       await runAISpeech(state, player);
     },
+    onRecordBadgeSignupDecision: (seat, signedUp, isHuman, day) =>
+      replay.recordBadgeSignupDecision(seat, signedUp, isHuman, day),
+    onRecordBadgeElectionVote: (voterSeat, candidateSeat, isHuman, day) =>
+      replay.recordBadgeElectionVote(voterSeat, candidateSeat, isHuman, day),
+    onRecordBadgeElected: (seat, dist, day) =>
+      replay.recordBadgeElected(seat, dist, day),
+    onRecordBadgeTransfer: (fromSeat, toSeat, isHuman, phase, day) =>
+      replay.recordBadgeTransfer(fromSeat, toSeat, isHuman, phase as Phase, day),
+    onRecordBadgeTorn: (fromSeat, isHuman, phase, day) =>
+      replay.recordBadgeTorn(fromSeat, isHuman, phase as Phase, day),
   });
   badgeTransferRef.current = badgePhase.handleBadgeTransfer;
   onStartVoteRef.current = enterVotePhase;
@@ -1699,6 +1730,9 @@ export function useGameLogic() {
 
       setGameState(newState);
 
+      // 开始回放记录
+      replay.startRecording(newState);
+
       setLoadingProgress({ percent: 95, stage: "finalizing" });
       // In spectator mode, skip role reveal and start the game immediately
       if (isSpectatorMode) {
@@ -2315,6 +2349,7 @@ export function useGameLogic() {
     startGame,
     continueAfterRoleReveal,
     restartGame,
+    downloadReplay: replay.downloadReplay,
     handleHumanSpeech,
     handleFinishSpeaking,
     handleBadgeSignup: badgePhase.handleBadgeSignup,

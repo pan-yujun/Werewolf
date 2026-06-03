@@ -978,6 +978,7 @@
     "startGame": "开始游戏",
     "restart": "再来一局",
     "viewAnalysis": "复盘报告",
+    "downloadReplay": "下载回放",
     "speechOrder": "请各位玩家依次发言",
     "generatingVoice": "生成语音",
     "seatWithName": "{seat}号 {name}",

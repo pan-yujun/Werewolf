@@ -972,6 +972,7 @@
     "startGame": "Start game",
     "restart": "Play again",
     "viewAnalysis": "Analysis",
+    "downloadReplay": "Replay",
     "speechOrder": "Players speak in order",
     "generatingVoice": "Generating voice",
     "seatNumber": "Seat {seat}",

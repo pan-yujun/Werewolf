@@ -28,6 +28,12 @@ export interface BadgePhaseCallbacks {
   onBadgeElectionComplete: (state: GameState) => Promise<void>;
   onBadgeTransferComplete: (state: GameState) => Promise<void>;
   runAISpeech: (state: GameState, player: Player) => Promise<void>;
+  /** 回放记录回调（可选） */
+  onRecordBadgeSignupDecision?: (seat: number, signedUp: boolean, isHuman: boolean, day: number) => void;
+  onRecordBadgeElectionVote?: (voterSeat: number, candidateSeat: number, isHuman: boolean, day: number) => void;
+  onRecordBadgeElected?: (seat: number, voteDistribution: Record<string, number[]>, day: number) => void;
+  onRecordBadgeTransfer?: (fromSeat: number, toSeat: number, isHuman: boolean, phase: string, day: number) => void;
+  onRecordBadgeTorn?: (fromSeat: number, isHuman: boolean, phase: string, day: number) => void;
 }
 
 export interface BadgePhaseActions {
@@ -70,6 +76,11 @@ export function useBadgePhase(
     onBadgeElectionComplete,
     onBadgeTransferComplete,
     runAISpeech,
+    onRecordBadgeSignupDecision,
+    onRecordBadgeElectionVote,
+    onRecordBadgeElected,
+    onRecordBadgeTransfer,
+    onRecordBadgeTorn,
   } = callbacks;
 
   // 使用 ref 打破循环依赖
@@ -223,6 +234,9 @@ export function useBadgePhase(
         nextState = addSystemMessage(nextState, badgeTieTearMessage);
 
         setGameState(nextState);
+
+        // 记录撕毁警徽到回放
+        onRecordBadgeTorn?.(-1, false, "DAY_BADGE_ELECTION", state.day);
         setDialogue(texts.speakerHost, badgeTieTearMessage, false);
 
         await delay(DELAY_CONFIG.DIALOGUE);
@@ -270,6 +284,17 @@ export function useBadgePhase(
     nextState = addSystemMessage(nextState, texts.systemMessages.badgeElected(winnerSeat + 1, winner?.displayName || "", votedCount));
 
     setGameState(nextState);
+
+    // 记录警长当选到回放
+    const voteDistForRecord: Record<string, number[]> = {};
+    for (const [voterId, targetSeat] of Object.entries(state.badge.votes)) {
+      const k = String(targetSeat);
+      if (!voteDistForRecord[k]) voteDistForRecord[k] = [];
+      const voter = state.players.find((p) => p.playerId === voterId);
+      if (voter) voteDistForRecord[k].push(voter.seat);
+    }
+    onRecordBadgeElected?.(winnerSeat, voteDistForRecord, state.day);
+
     setDialogue(texts.speakerHost, texts.systemMessages.badgeElected(winnerSeat + 1, winner?.displayName || "", votedCount), false);
 
     await delay(DELAY_CONFIG.DIALOGUE);
@@ -601,6 +626,8 @@ export function useBadgePhase(
       };
       currentState = addSystemMessage(currentState, texts.systemMessages.badgeTorn(sheriff.seat + 1, sheriff.displayName));
       setDialogue(texts.speakerHost, texts.systemMessages.badgeTorn(sheriff.seat + 1, sheriff.displayName), false);
+      // 记录撕毁警徽到回放
+      onRecordBadgeTorn?.(sheriff.seat, false, "BADGE_TRANSFER", currentState.day);
     } else {
       // 正常移交
       const target = currentState.players.find((p) => p.seat === targetSeat);
@@ -611,6 +638,8 @@ export function useBadgePhase(
         };
         currentState = addSystemMessage(currentState, texts.systemMessages.badgeTransferred(sheriff.seat + 1, targetSeat + 1, target.displayName));
         setDialogue(texts.speakerHost, texts.systemMessages.badgeTransferred(sheriff.seat + 1, targetSeat + 1, target.displayName), false);
+        // 记录警徽流传到回放
+        onRecordBadgeTransfer?.(sheriff.seat, targetSeat, false, "BADGE_TRANSFER", currentState.day);
       }
     }
     setGameState(currentState);
@@ -639,6 +668,8 @@ export function useBadgePhase(
       };
       currentState = addSystemMessage(currentState, texts.systemMessages.badgeTorn(sheriffSeat! + 1, human.displayName));
       setDialogue(texts.speakerHost, texts.systemMessages.badgeTorn(sheriffSeat! + 1, human.displayName), false);
+      // 记录人类撕毁警徽到回放
+      onRecordBadgeTorn?.(sheriffSeat!, true, "BADGE_TRANSFER", gameState.day);
     } else {
       // 正常移交
       const target = gameState.players.find((p) => p.seat === targetSeat);
@@ -650,6 +681,8 @@ export function useBadgePhase(
       };
       currentState = addSystemMessage(currentState, texts.systemMessages.badgeTransferred(sheriffSeat! + 1, targetSeat + 1, target.displayName));
       setDialogue(texts.speakerHost, texts.systemMessages.badgeTransferred(sheriffSeat! + 1, targetSeat + 1, target.displayName), false);
+      // 记录人类警徽流传到回放
+      onRecordBadgeTransfer?.(sheriffSeat!, targetSeat, true, "BADGE_TRANSFER", gameState.day);
     }
 
     setGameState(currentState);

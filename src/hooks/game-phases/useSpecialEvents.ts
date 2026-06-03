@@ -26,6 +26,9 @@ export interface SpecialEventsCallbacks {
   isTokenValid: (token: FlowToken) => boolean;
   getAccessToken: () => string | null;
   prepareFinalState?: (state: GameState) => Promise<GameState>;
+  /** 回放记录回调（可选） */
+  onRecordNightResolve?: (deaths: Array<{ seat: number; reason: "wolf" | "poison" | "milk" }>, day: number) => void;
+  onRecordHunterShoot?: (hunterSeat: number, targetSeat: number | null, diedAtNight: boolean, isHuman: boolean, phase: string, day: number) => void;
 }
 
 export interface SpecialEventsActions {
@@ -53,7 +56,7 @@ export function useSpecialEvents(
   };
   const [, setGameState] = useAtom(gameStateAtom);
 
-  const { setDialogue, setIsWaitingForAI, waitForUnpause, isTokenValid, getAccessToken, prepareFinalState } = callbacks;
+  const { setDialogue, setIsWaitingForAI, waitForUnpause, isTokenValid, getAccessToken, prepareFinalState, onRecordNightResolve, onRecordHunterShoot } = callbacks;
 
   /** 游戏结束 */
   const endGame = useCallback(async (state: GameState, winner: Alignment) => {
@@ -126,6 +129,9 @@ export function useSpecialEvents(
         currentState = addSystemMessage(currentState, texts.systemMessages.hunterShoot(hunter.seat + 1, targetSeat + 1, target.displayName));
         setDialogue(texts.speakerHost, texts.systemMessages.hunterShoot(hunter.seat + 1, targetSeat + 1, target.displayName), false);
       }
+
+      // 记录猎人射击到回放
+      onRecordHunterShoot?.(hunter.seat, targetSeat, diedAtNight, false, "HUNTER_SHOOT", currentState.day);
 
       // 记录猎人开枪
       const shot = { hunterSeat: hunter.seat, targetSeat };
@@ -247,6 +253,9 @@ export function useSpecialEvents(
     };
 
     setGameState(currentState);
+
+    // 记录夜晚结算到回放
+    onRecordNightResolve?.(nightDeaths, currentState.day);
 
     await delay(DELAY_CONFIG.LONG);
     await waitForUnpause();

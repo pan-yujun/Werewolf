@@ -32,6 +32,17 @@ export interface DayPhaseCallbacks {
   setPrefetchedSpeech: (prefetch: PrefetchedSpeech | null) => void;
   consumePrefetchedSpeech: (criteria: PrefetchCriteria) => string[] | null;
   setAfterLastWords: (callback: ((s: GameState) => Promise<void>) | null) => void;
+  /** 回放记录回调：记录发言段落（可选） */
+  onRecordSpeechSegment?: (
+    speakerSeat: number,
+    speakerName: string,
+    content: string,
+    segmentIndex: number,
+    isHuman: boolean,
+    isLastWords: boolean,
+    phase: Phase,
+    day: number,
+  ) => void;
 }
 
 export interface DayPhaseActions {
@@ -63,6 +74,7 @@ export function useDayPhase(
     setPrefetchedSpeech,
     consumePrefetchedSpeech,
     setAfterLastWords,
+    onRecordSpeechSegment,
   } = callbacks;
 
   /** 判断是否为发言类阶段 */
@@ -347,6 +359,18 @@ export function useDayPhase(
             setIsWaitingForAI(false);
           }
           appendToSpeechQueue(segment);
+
+          // 记录发言段落到回放
+          onRecordSpeechSegment?.(
+            player.seat,
+            player.displayName,
+            segment,
+            index,
+            false,
+            state.phase === "DAY_LAST_WORDS",
+            state.phase,
+            state.day,
+          );
 
           // 异步处理 TTS（不影响段落顺序）
           if (ttsEnabled) {

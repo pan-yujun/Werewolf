@@ -4,7 +4,7 @@ import React, { useRef, useEffect, useMemo, useState, useCallback } from "react"
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChatCircleDots, PaperPlaneTilt, CheckCircle, MoonStars, Eye, Drop, Crosshair, Skull, X, ArrowClockwise, CaretRight, UserCircle, Prohibit, ClipboardText } from "@phosphor-icons/react";
+import { ChatCircleDots, PaperPlaneTilt, CheckCircle, MoonStars, Eye, Drop, Crosshair, Skull, X, ArrowClockwise, CaretRight, UserCircle, Prohibit, ClipboardText, DownloadSimple } from "@phosphor-icons/react";
 import { WerewolfIcon, VillagerIcon, VoteIcon } from "@/components/icons/FlatIcons";
 import { VoteResultCard } from "./VoteResultCard";
 import { VotingProgress } from "./VotingProgress";
@@ -278,6 +278,7 @@ interface DialogAreaProps {
   onRestart?: () => void;
   onWhiteWolfKingBoom?: () => void;
   onViewAnalysis?: () => void;
+  onDownloadReplay?: () => void;
   isAnalysisLoading?: boolean;
   isEventLogOpen?: boolean;
   onEventLogOpenChange?: (open: boolean) => void;
@@ -393,6 +394,7 @@ export function DialogArea({
   onRestart,
   onWhiteWolfKingBoom,
   onViewAnalysis,
+  onDownloadReplay,
   isAnalysisLoading = false,
   isEventLogOpen = false,
   onEventLogOpenChange,
@@ -1221,6 +1223,16 @@ export function DialogArea({
                   <div className={`flex items-center justify-between mt-4 pt-3 border-t ${isNight ? "border-white/10" : "border-black/5"}`}>
                     <span className="text-xs text-[var(--text-muted)]">{t("dialog.playAgainHint")}</span>
                     <div className="flex items-center gap-2">
+                      {onDownloadReplay && (
+                        <button
+                          onClick={onDownloadReplay}
+                          className="wc-action-btn text-sm h-9 px-4 flex items-center gap-2"
+                          type="button"
+                        >
+                          <DownloadSimple size={14} weight="bold" />
+                          {t("ui.downloadReplay")}
+                        </button>
+                      )}
                       {getLocale() === "zh" && (
                         <button
                           onClick={onViewAnalysis}

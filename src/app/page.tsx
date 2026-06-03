@@ -176,6 +176,7 @@ export default function Home() {
     advanceSpeech,
     markCurrentSegmentCompleted,
     shouldAutoAdvanceToNextAI,
+    downloadReplay,
   } = useGameLogic();
   const { settings, setBgmVolume, setSoundEnabled, setAiVoiceEnabled, setGenshinMode, setSpectatorMode, setAutoAdvanceDialogueEnabled } = useSettings();
   const { bgmVolume, isSoundEnabled, isAiVoiceEnabled, isGenshinMode, isSpectatorMode, isAutoAdvanceDialogueEnabled } = settings;
@@ -1619,6 +1620,7 @@ export default function Home() {
                       onRestart={restartGame}
                       onWhiteWolfKingBoom={handleWhiteWolfKingBoom}
                       onViewAnalysis={handleViewAnalysis}
+                      onDownloadReplay={downloadReplay}
                       isEventLogOpen={isEventLogOpen}
                       onEventLogOpenChange={setIsEventLogOpen}
                     />

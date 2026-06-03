@@ -35,6 +35,9 @@ type VotePhaseRuntime = {
   onVoteComplete: (state: GameState, result: { seat: number; count: number } | null) => Promise<void>;
   onGameEnd: (state: GameState, winner: "village" | "wolf") => Promise<void>;
   runAISpeech: (state: GameState, player: Player) => Promise<void>;
+  /** 回放记录回调（可选） */
+  onRecordVoteCast?: (voterSeat: number, targetSeat: number, reason: string | undefined, isHuman: boolean, isSheriffVote: boolean, phase: string, day: number) => void;
+  onRecordVoteResult?: (eliminated: number | null, voteDistribution: Record<string, number[]>, isTie: boolean, isPK: boolean, pkRound: number, phase: string, day: number) => void;
 };
 
 export class VotePhase extends GamePhase {
@@ -284,6 +287,26 @@ export class VotePhase extends GamePhase {
     }
 
     runtime.setGameState(currentState);
+
+    // 记录投票结果到回放
+    const voteDistForRecord: Record<string, number[]> = {};
+    for (const [voterId, targetSeat] of Object.entries(currentVotes)) {
+      const k = String(targetSeat);
+      if (!voteDistForRecord[k]) voteDistForRecord[k] = [];
+      const voter = currentState.players.find((p) => p.playerId === voterId);
+      if (voter) voteDistForRecord[k].push(voter.seat);
+    }
+    const isTie = !result;
+    const isPK = currentState.pkSource === "vote";
+    runtime.onRecordVoteResult?.(
+      result?.seat ?? null,
+      voteDistForRecord,
+      isTie,
+      isPK,
+      currentState.badge.revoteCount ?? 0,
+      "DAY_RESOLVE",
+      currentState.day,
+    );
 
     const voteDetailMessage = this.generateVoteDetails(
       currentVotes,
