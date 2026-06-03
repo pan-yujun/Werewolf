@@ -1658,6 +1658,10 @@ export function useGameLogic() {
       }
 
       setLoadingProgress({ percent: 85, stage: "roles" });
+      // Merge custom model refs into aiModelRefs so setupPlayers uses them
+      const mergedModelRefs = isGenshinMode
+        ? genshinModelRefs!
+        : aiModelRefs.map((ref, i) => customModelRefs[i] ?? ref);
       const players = setupPlayers(
         characters,
         humanSeat,
@@ -1665,7 +1669,7 @@ export function useGameLogic() {
         totalPlayers,
         fixedRoles,
         seedPlayerIds,
-        isGenshinMode ? genshinModelRefs : aiModelRefs,
+        mergedModelRefs,
         aiSeatOrder,
         preferredRole
       );
