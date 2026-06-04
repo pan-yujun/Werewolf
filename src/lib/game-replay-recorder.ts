@@ -34,7 +34,7 @@ function canUseStorage(): boolean {
 
 // ── 索引类型 ──────────────────────────────────────────────
 
-interface ReplayIndexItem {
+export interface ReplayIndexItem {
   gameId: string;
   timestamp: number;
   duration: number;
@@ -606,5 +606,46 @@ export function clearAllReplays(): void {
     window.localStorage.removeItem(REPLAY_INDEX_KEY);
   } catch {
     // 静默失败
+  }
+}
+
+/** 从 JSON 字符串导入回放数据到 localStorage，返回 gameId 或 null */
+export function importReplayFromJSON(json: string): string | null {
+  if (!canUseStorage()) return null;
+  try {
+    const data = JSON.parse(json) as GameReplayData;
+    if (!data.meta?.gameId || !data.players || !data.timeline) return null;
+    const gameId = data.meta.gameId;
+    // 保存完整数据
+    window.localStorage.setItem(`${REPLAY_STORAGE_PREFIX}${gameId}`, JSON.stringify(data));
+    // 更新索引
+    const index = getReplayIndex();
+    const item: ReplayIndexItem = {
+      gameId,
+      timestamp: data.meta.recordedAt ?? data.meta.endTime ?? Date.now(),
+      duration: data.meta.duration ?? 0,
+      playerCount: data.meta.config?.playerCount ?? data.players.length,
+      result: data.meta.result?.winner === "village" ? "village_win" : "wolf_win",
+      humanRole: data.meta.result?.humanRole ?? "Villager",
+      humanSeat: data.meta.result?.humanSeat ?? 0,
+      totalDays: data.meta.result?.totalDays ?? 0,
+    };
+    const existing = index.findIndex((i) => i.gameId === gameId);
+    if (existing >= 0) {
+      index[existing] = item;
+    } else {
+      index.unshift(item);
+    }
+    // LRU 淘汰
+    while (index.length > REPLAY_MAX_STORAGE) {
+      const removed = index.pop();
+      if (removed) {
+        window.localStorage.removeItem(`${REPLAY_STORAGE_PREFIX}${removed.gameId}`);
+      }
+    }
+    window.localStorage.setItem(REPLAY_INDEX_KEY, JSON.stringify(index));
+    return gameId;
+  } catch {
+    return null;
   }
 }

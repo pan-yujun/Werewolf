@@ -1114,6 +1114,7 @@
     "tiePk": "警徽平票，进入PK发言",
     "tieTear": "警徽第二轮仍平票，警徽自动撕毁，本局没有警长",
     "signupStart": "进入警徽竞选报名环节",
+    "signupResult": "共有 {count} 人报名竞选警长",
     "noSignup": "无人报名竞选警长，跳过警徽竞选",
     "transferPrompt": "点击玩家卡片选择移交警徽的对象",
     "autoElected": "{seat}号 {name} 作为唯一候选人直接当选警长"
@@ -2368,7 +2369,23 @@
     "wolfWin": "狼人胜",
     "players": "人",
     "points": "分",
-    "delete": "删除记录"
+    "delete": "删除记录",
+    "replay": "回放",
+    "replayOnly": "仅回放"
+  },
+  "replay": {
+    "title": "游戏回放",
+    "players": "人",
+    "day": "第",
+    "restart": "重新开始",
+    "notFound": "未找到回放数据",
+    "invalidFile": "无效的回放文件",
+    "parseError": "文件解析失败",
+    "selectFile": "选择回放文件",
+    "selectFileHint": "上传 .json 格式的回放数据文件",
+    "uploadFile": "上传回放文件",
+    "importReplay": "导入回放",
+    "backToHome": "返回首页"
   },
   "dataMigration": {
     "description": "导出或导入自定义角色与对局记录，用于备份或迁移到其他浏览器。",

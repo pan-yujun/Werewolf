@@ -1109,6 +1109,7 @@
     "tiePk": "Sheriff vote tied. Enter PK speeches.",
     "tieTear": "Sheriff vote tied again. The badge is torn. There will be no sheriff this game.",
     "signupStart": "Sheriff election signup begins",
+    "signupResult": "{count} player(s) signed up for sheriff",
     "noSignup": "No one signed up for sheriff. Skipping sheriff election.",
     "transferPrompt": "Tap a player card to transfer the badge",
     "autoElected": "Seat {seat} {name} is the only candidate and becomes sheriff"
@@ -2286,7 +2287,23 @@
     "wolfWin": "Wolf Win",
     "players": " players",
     "points": " pts",
-    "delete": "Delete record"
+    "delete": "Delete record",
+    "replay": "Replay",
+    "replayOnly": "Replay only"
+  },
+  "replay": {
+    "title": "Game Replay",
+    "players": " players",
+    "day": "Day",
+    "restart": "Restart",
+    "notFound": "Replay data not found",
+    "invalidFile": "Invalid replay file",
+    "parseError": "Failed to parse file",
+    "selectFile": "Select a replay file",
+    "selectFileHint": "Upload a .json replay data file",
+    "uploadFile": "Upload Replay",
+    "importReplay": "Import Replay",
+    "backToHome": "Back to Home"
   },
   "dataMigration": {
     "description": "Export or import custom characters and game history for backup or migration to another browser.",
