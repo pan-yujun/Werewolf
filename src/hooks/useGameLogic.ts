@@ -1752,6 +1752,15 @@ export function useGameLogic() {
    * @param options - 游戏配置选项（角色、人数、难度、模式等）
    */
   const startGame = useCallback(async (options?: Partial<StartGameOptions>) => {
+    // 取消待执行的自动重启定时器，防止竞争条件：
+    // 当用户点击"再来一局"后，restartGame(true) 会设置 3 秒定时器自动重启；
+    // 若用户在 3 秒内手动点击"开始游戏"，需要取消该定时器，
+    // 否则定时器触发时会用上一局的旧配置覆盖用户刚启动的新游戏。
+    if (autoRestartTimerRef.current !== null) {
+      window.clearTimeout(autoRestartTimerRef.current);
+      autoRestartTimerRef.current = null;
+    }
+
     const {
       fixedRoles,                      // 自定义角色分配（开发模式或自定义配置时使用）
       devPreset,                       // 开发预设（跳转到特定阶段）
@@ -2265,6 +2274,7 @@ export function useGameLogic() {
     }
 
     // 11. 如果需要自动重启，3秒后使用上一局配置自动开始新游戏
+    //     注意：若用户在 3 秒内手动点击"开始游戏"，startGame 会取消此定时器
     if (autoRestart) {
       const savedOptions = lastGameOptionsRef.current;
       autoRestartTimerRef.current = window.setTimeout(() => {

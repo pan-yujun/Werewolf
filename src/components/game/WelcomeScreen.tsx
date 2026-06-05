@@ -26,7 +26,7 @@ import { LocaleSwitcher } from "@/components/game/LocaleSwitcher";
 import { CustomCharacterModal } from "@/components/game/CustomCharacterModal";
 import { useCustomCharacters } from "@/hooks/useCustomCharacters";
 import { useCredits } from "@/hooks/useCredits";
-import { difficultyAtom, playerCountAtom, preferredRoleAtom, customRoleConfigEnabledAtom, customRoleConfigAtom, configPresetAtom } from "@/store/settings";
+import { difficultyAtom, playerCountAtom, preferredRoleAtom, customRoleConfigEnabledAtom, customRoleConfigAtom, configPresetAtom, gameConfigAtom, resolveGameConfig, persistedCustomCharactersAtom } from "@/store/settings";
 import type { CustomRoleConfig } from "@/store/settings";
 import type { ConfigPreset } from "@/types/game";
 import { hasDashscopeKey, hasMimoKey, hasModelscopeKey, hasZenmuxKey, isCustomKeyEnabled } from "@/lib/api-keys";
@@ -222,17 +222,6 @@ function getRoleCountConfig(playerCount: number) {
   };
 }
 
-/** 将自定义角色配置（Record<Role, number>）展平为 Role[] 数组，用于传入 fixedRoles */
-function roleConfigToArray(config: CustomRoleConfig): Role[] {
-  const result: Role[] = [];
-  for (const [role, count] of Object.entries(config)) {
-    for (let i = 0; i < (count ?? 0); i++) {
-      result.push(role as Role);
-    }
-  }
-  return result;
-}
-
 interface WelcomeScreenProps {
   humanName: string;
   setHumanName: (name: string) => void;
@@ -411,6 +400,33 @@ export function WelcomeScreen({
   const [customRoleConfigEnabled, setCustomRoleConfigEnabled] = useAtom(customRoleConfigEnabledAtom);  // 自定义角色配置开关
   const [customRoleConfig, setCustomRoleConfig] = useAtom(customRoleConfigAtom);                        // 自定义角色数量配置
   const [configPreset, setConfigPreset] = useAtom(configPresetAtom);                                    // 配置预设（standard/noGuard）
+  const [gameConfig, setGameConfig] = useAtom(gameConfigAtom);                                          // 预计算的游戏角色配置
+
+  // 当人数、配置预设或自定义角色配置变更时，重新生成并持久化游戏配置
+  useEffect(() => {
+    setGameConfig(resolveGameConfig(playerCount, configPreset, customRoleConfigEnabled, customRoleConfig));
+  }, [playerCount, configPreset, customRoleConfigEnabled, customRoleConfig, setGameConfig]);
+
+  const [persistedCustomCharacters, setPersistedCustomCharacters] = useAtom(persistedCustomCharactersAtom);
+
+  // 当勾选/取消勾选角色、修改角色信息或变更角色模型时，同步更新持久化的自定义角色数据
+  useEffect(() => {
+    const selected = customCharacters.characters
+      .filter(c => selectedCharacterIds.has(c.id))
+      .map(c => ({
+        id: c.id,
+        display_name: c.display_name,
+        gender: c.gender,
+        age: c.age,
+        mbti: c.mbti,
+        basic_info: c.basic_info,
+        style_label: c.style_label,
+        avatar_seed: c.avatar_seed,
+        modelRef: characterModels.get(c.id) ?? undefined,
+      }));
+    setPersistedCustomCharacters(selected);
+  }, [selectedCharacterIds, customCharacters.characters, characterModels, setPersistedCustomCharacters]);
+
   const [githubStars, setGithubStars] = useState<number | null>(null);
   const springCampaignRemainingQuota = springCampaign?.remainingQuota ?? 0;
   const springCampaignTotalQuota = springCampaign?.totalQuota ?? 0;
@@ -747,37 +763,17 @@ export function WelcomeScreen({
     setIsTransitioning(true);
 
     window.setTimeout(() => {
-      // 传递开发模式配置
-      const roles = devTab === "roles" && devRoleOverrideEnabled && roleConfigValid ? (fixedRoles as Role[]) : undefined;
+      // 开发模式角色覆盖优先，否则使用预计算的游戏配置
+      const devRoles = devTab === "roles" && devRoleOverrideEnabled && roleConfigValid ? (fixedRoles as Role[]) : undefined;
       const preset = devTab === "preset" && devPreset ? (devPreset as DevPreset) : undefined;
 
-      // 若自定义角色配置开启，将其转换为 Role[] 数组作为 fixedRoles
-      const customRoles = customRoleConfigEnabled
-        ? roleConfigToArray(customRoleConfig)
-        : undefined;
-
-      // Get selected custom characters
-      const selectedCustomChars = customCharacters.characters
-        .filter(c => selectedCharacterIds.has(c.id))
-        .map(c => ({
-          id: c.id,
-          display_name: c.display_name,
-          gender: c.gender,
-          age: c.age,
-          mbti: c.mbti,
-          basic_info: c.basic_info,
-          style_label: c.style_label,
-          avatar_seed: c.avatar_seed,
-          modelRef: characterModels.get(c.id) ?? undefined,
-        }));
-
       void onStart({
-        fixedRoles: customRoles ?? roles,
+        fixedRoles: devRoles ?? gameConfig,
         devPreset: preset,
         difficulty,
         playerCount,
         configPreset,
-        customCharacters: selectedCustomChars,
+        customCharacters: persistedCustomCharacters.length > 0 ? persistedCustomCharacters : undefined,
         preferredRole: preferredRole || undefined,
       });
     }, 800);
@@ -814,35 +810,16 @@ export function WelcomeScreen({
     setIsTransitioning(true);
 
     window.setTimeout(() => {
-      const roles = devTab === "roles" && devRoleOverrideEnabled && roleConfigValid ? (fixedRoles as Role[]) : undefined;
+      const devRoles = devTab === "roles" && devRoleOverrideEnabled && roleConfigValid ? (fixedRoles as Role[]) : undefined;
       const preset = devTab === "preset" && devPreset ? (devPreset as DevPreset) : undefined;
 
-      // 若自定义角色配置开启，将其转换为 Role[] 数组作为 fixedRoles
-      const customRoles = customRoleConfigEnabled
-        ? roleConfigToArray(customRoleConfig)
-        : undefined;
-
-      const selectedCustomChars = customCharacters.characters
-        .filter(c => selectedCharacterIds.has(c.id))
-        .map(c => ({
-          id: c.id,
-          display_name: c.display_name,
-          gender: c.gender,
-          age: c.age,
-          mbti: c.mbti,
-          basic_info: c.basic_info,
-          style_label: c.style_label,
-          avatar_seed: c.avatar_seed,
-          modelRef: characterModels.get(c.id) ?? undefined,
-        }));
-
       void onStart({
-        fixedRoles: customRoles ?? roles,
+        fixedRoles: devRoles ?? gameConfig,
         devPreset: preset,
         difficulty,
         playerCount,
         configPreset,
-        customCharacters: selectedCustomChars,
+        customCharacters: persistedCustomCharacters.length > 0 ? persistedCustomCharacters : undefined,
         preferredRole: preferredRole || undefined,
       });
     }, 800);

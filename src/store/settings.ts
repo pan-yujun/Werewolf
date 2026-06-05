@@ -1,6 +1,7 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import type { DifficultyLevel, Role, ConfigPreset } from "@/types/game";
+import type { DifficultyLevel, Role, ConfigPreset, CustomCharacterData, ModelRef } from "@/types/game";
+import { getRoleConfiguration } from "@/lib/game-master";
 export type { ConfigPreset } from "@/types/game";
 
 export interface AudioSettings {
@@ -160,5 +161,70 @@ export const customRoleConfigAtom = atom(
     const prev = normalizeCustomRoleConfig(get(rawCustomRoleConfigAtom));
     const next = typeof update === "function" ? update(prev) : update;
     set(rawCustomRoleConfigAtom, normalizeCustomRoleConfig(next));
+  }
+);
+
+/** 将自定义角色配置（Record<Role, number>）展平为 Role[] 数组 */
+export function roleConfigToArray(config: CustomRoleConfig): Role[] {
+  const result: Role[] = [];
+  for (const [role, count] of Object.entries(config)) {
+    for (let i = 0; i < (count ?? 0); i++) {
+      result.push(role as Role);
+    }
+  }
+  return result;
+}
+
+/**
+ * 预计算的游戏角色配置（Role[] 数组）。
+ * 根据人数 + 配置预设（标准模式）或自定义角色配置（自定义模式）生成。
+ * 当人数、配置预设、自定义角色配置开关或自定义角色数量变更时自动重新生成并持久化。
+ */
+const rawGameConfigAtom = atomWithStorage<Role[]>("wolfcha.settings.game_config", []);
+
+export const gameConfigAtom = atom(
+  (get) => get(rawGameConfigAtom),
+  (get, set, update: Role[] | ((prev: Role[]) => Role[])) => {
+    const prev = get(rawGameConfigAtom);
+    const next = typeof update === "function" ? update(prev) : update;
+    set(rawGameConfigAtom, next);
+  }
+);
+
+/**
+ * 根据当前设置生成游戏配置（Role[] 数组）。
+ * 自定义角色配置开启且总数匹配时使用自定义配置，否则使用标准配置。
+ */
+export function resolveGameConfig(
+  playerCount: number,
+  configPreset: ConfigPreset,
+  customRoleConfigEnabled: boolean,
+  customRoleConfig: CustomRoleConfig
+): Role[] {
+  if (customRoleConfigEnabled) {
+    const total = Object.values(customRoleConfig).reduce((sum, n) => sum + (n ?? 0), 0);
+    if (total === playerCount) {
+      return roleConfigToArray(customRoleConfig);
+    }
+  }
+  return getRoleConfiguration(playerCount, configPreset);
+}
+
+/**
+ * 预持久化的自定义角色数据（含头像、名称、性别、年龄、LLM 模型等完整信息）。
+ * 当勾选/取消勾选角色、修改角色信息或变更角色模型时自动同步更新。
+ * 开始游戏时直接使用此数据，无需再次从数据库查询或组装。
+ */
+const rawPersistedCustomCharactersAtom = atomWithStorage<CustomCharacterData[]>(
+  "wolfcha.settings.custom_characters",
+  []
+);
+
+export const persistedCustomCharactersAtom = atom(
+  (get) => get(rawPersistedCustomCharactersAtom),
+  (get, set, update: CustomCharacterData[] | ((prev: CustomCharacterData[]) => CustomCharacterData[])) => {
+    const prev = get(rawPersistedCustomCharactersAtom);
+    const next = typeof update === "function" ? update(prev) : update;
+    set(rawPersistedCustomCharactersAtom, next);
   }
 );

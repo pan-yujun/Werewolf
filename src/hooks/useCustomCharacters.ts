@@ -33,7 +33,7 @@ function saveDevCharacters(characters: CustomCharacter[]) {
 
 export function useCustomCharacters(user: User | null) {
   const [characters, setCharacters] = useState<CustomCharacter[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // 开发模式下使用 localStorage
@@ -43,11 +43,13 @@ export function useCustomCharacters(user: User | null) {
     if (isDevMode) {
       // 开发模式：从 localStorage 加载
       setCharacters(getDevCharacters());
+      setLoading(false);
       return;
     }
 
     if (!user) {
       setCharacters([]);
+      setLoading(false);
       return;
     }
 
