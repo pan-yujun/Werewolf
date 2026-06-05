@@ -30,6 +30,7 @@ import {
   addSystemMessage,
   checkWinCondition,
   generateAIVote,
+  killPlayer,
   tallyVotes,
   transitionPhase,
 } from "@/lib/game-master";
@@ -650,7 +651,12 @@ export class VotePhase extends GamePhase {
     }
 
     // === 胜负条件检查 ===
-    // 检查当前存活人数是否满足某一方的胜利条件
+    // 先将被处决者标记为死亡，再检查胜负条件
+    // （猎人路径已提前返回，此处只需处理非猎人角色）
+    if (result) {
+      currentState = killPlayer(currentState, result.seat);
+      runtime.setGameState(currentState);
+    }
     const winner = checkWinCondition(currentState);
     if (winner) {
       // 有胜出方：触发游戏结束流程
