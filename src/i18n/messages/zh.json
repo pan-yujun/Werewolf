@@ -1537,6 +1537,14 @@
     "gameEndVillage": "游戏结束：好人阵营胜利",
     "gameEndWolf": "游戏结束：狼人阵营胜利"
   },
+  "gameLog": {
+    "title": "游戏日志",
+    "buttonLabel": "日志",
+    "backToHistory": "返回",
+    "entryCount": "{count} 条",
+    "empty": "暂无日志",
+    "download": "下载日志"
+  },
   "wolfPlanning": {
     "title": "狼人协作",
     "subtitle": "选择今晚的击杀目标",

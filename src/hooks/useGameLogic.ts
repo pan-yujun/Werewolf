@@ -1,28 +1,66 @@
 "use client";
 
 /**
- * useGameLogic - 游戏逻辑协调层（重构版）
- * 
- * 职责：
- * 1. 协调各阶段 Hook 的调用
- * 2. 管理全局游戏状态
- * 3. 处理 Dev Mode 跳转
- * 4. 暴露统一的 API 给 UI 组件
- * 
- * 遵循原则：
- * - SRP: 仅负责协调，不包含具体业务逻辑
- * - DRY: 复用子模块，避免重复代码
+ * useGameLogic - 游戏主逻辑协调 Hook（中央编排器）
+ *
+ * 这是整个狼人杀游戏的核心协调层，承担"总指挥"角色：
+ *
+ * ## 核心职责
+ * 1. **子 Hook 编排** — 将以下子模块串联成完整的游戏循环：
+ *    - `useDayPhase`：白天发言阶段（自由讨论、遗言）
+ *    - `useBadgePhase`：警长竞选阶段（报名、演讲、投票、移交）
+ *    - `useSpecialEvents`：特殊事件处理（夜晚结算、猎人开枪、游戏结束）
+ *    - `useDialogueManager`：对话/旁白管理（打字机效果、流式语音队列）
+ *    - `useReplayRecorder`：回放记录器（记录完整对局时间线，支持事后回放）
+ *
+ * 2. **全局状态管理** — 通过 Jotai atom (`gameStateAtom`) 管理游戏状态，
+ *    并利用 localStorage 持久化实现页面刷新后的断点恢复
+ *
+ * 3. **人类玩家输入处理** — 接收并分发人类玩家的操作：
+ *    夜晚行动（守卫/狼人/女巫/预言家/猎人/白狼王）、发言、投票
+ *
+ * 4. **昼夜循环驱动** — 协调 night→day→night 的主循环：
+ *    夜晚各角色行动 → 夜晚结算 → 白天开始 → 警长竞选(第1天) → 讨论发言 → 投票 → 处决 → 遗言 → 回到夜晚
+ *
+ * 5. **Dev 调试支持** — 处理开发模式下的阶段跳转和状态修改
+ *
+ * ## 关键设计模式
+ * - **FlowToken 模式**：异步操作前获取 token，await 后检查 token.isValid()，
+ *   防止游戏重置期间的陈旧回调继续执行
+ * - **Ref 回调模式**：大量使用 useRef 存储函数引用，用于打破子模块间的
+ *   循环依赖，并确保异步回调中能访问到最新的函数版本
+ * - **Phase Extras 模式**：通过 queuePhaseExtras 在阶段切换时传递上下文数据，
+ *   PhaseManager 在 onEnter 时读取这些 extras 配置阶段行为
+ *
+ * ## 流程概览
+ * ```
+ * startGame() → 角色揭示 → continueAfterRoleReveal() → 夜晚流程
+ *   → proceedToNight() → [守卫→狼人→女巫→预言家→结算]
+ *   → startDayPhaseInternal() → [警长竞选(第1天) | 自由讨论]
+ *   → enterVotePhase() → handleVoteComplete() → [处决→遗言→警徽移交→猎人开枪]
+ *   → proceedToNight() → 循环...
+ * ```
  */
 
+// ============================================
+// React 核心 & 第三方库
+// ============================================
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useAtom } from "jotai";
-import { useLocalStorageState } from "ahooks";
-import { toast } from "sonner";
-import { useTranslations } from "next-intl";
+import { useAtom } from "jotai";                    // Jotai 状态管理，用于读写全局 gameStateAtom
+import { useLocalStorageState } from "ahooks";       // localStorage 持久化 hook，用于保存人类玩家名称
+import { toast } from "sonner";                       // 轻量 toast 通知组件
+import { useTranslations } from "next-intl";          // 国际化翻译 hook
 
+// ============================================
+// 游戏类型定义 & 状态管理
+// ============================================
 import { ALL_MODELS, PLAYER_MODELS, PROJECT_MODELS, isWolfRole, type GameState, type Player, type Phase, type Role, type DevPreset, type ModelRef, type StartGameOptions } from "@/types/game";
 import { gameStateAtom, isValidTransition, clearPersistedGameState, isGameInProgress } from "@/store/game-machine";
 import { getGeneratorModel } from "@/lib/api-keys";
+
+// ============================================
+// Game Master — 纯函数层（玩家设置、阶段转换、胜负判定、击杀结算等）
+// ============================================
 import {
   createInitialGameState,
   setupPlayers,
@@ -35,33 +73,57 @@ import {
   getNextAliveSeat,
   generateWhiteWolfKingBoomDecision,
 } from "@/lib/game-master";
+
+// ============================================
+// 角色生成 & 游戏文本 & 场景 & 常量 & 工具
+// ============================================
 import { buildGenshinModelRefs, generateCharacters, generateGenshinModeCharacters, sampleModelRefs, type GeneratedCharacter } from "@/lib/character-generator";
 import { getSystemMessages, getUiText } from "@/lib/game-texts";
 import { getRandomScenario } from "@/lib/scenarios";
 import { DELAY_CONFIG, getRoleName } from "@/lib/game-constants";
 import { generateUUID } from "@/lib/utils";
+
+// ============================================
+// 流程控制 & 音频 & 阶段管理器
+// ============================================
 import {
-  AsyncFlowController,
+  AsyncFlowController,    // 异步流程控制器：interrupt/pause/resume，FlowToken 防止陈旧回调
   delay,
   randomDelay,
   computeUniqueTopSeat,
 } from "@/lib/game-flow-controller";
-import { playNarrator } from "@/lib/narrator-audio-player";
-import { PhaseManager } from "@/game/core/PhaseManager";
-import { supabase } from "@/lib/supabase";
-import { gameStatsTracker } from "@/hooks/useGameStats";
-import { gameSessionTracker } from "@/lib/game-session-tracker";
+import { playNarrator } from "@/lib/narrator-audio-player";  // 旁白语音播放（"天黑请闭眼"等）
+import { PhaseManager } from "@/game/core/PhaseManager";     // 阶段管理器：将 Phase 枚举映射到 GamePhase 实例
+
+// ============================================
+// 外部服务 & 数据追踪
+// ============================================
+import { supabase } from "@/lib/supabase";                    // Supabase 客户端（认证 + 数据库）
+import { gameStatsTracker } from "@/hooks/useGameStats";      // 游戏统计追踪器（本地统计）
+import { gameSessionTracker } from "@/lib/game-session-tracker"; // 游戏会话追踪器（云端持久化）
 import { isCustomKeyEnabled } from "@/lib/api-keys";
 import { isQuotaExhaustedMessage } from "@/lib/llm";
-import { aiLogger } from "@/lib/ai-logger";
+import { aiLogger } from "@/lib/ai-logger";                   // AI 调用日志记录器
+import { gameLogger } from "@/lib/game-logger";               // 游戏事件日志记录器
 
-// 子模块
-import { useDialogueManager, type DialogueState } from "./useDialogueManager";
-import { useDayPhase } from "./game-phases/useDayPhase";
-import { useBadgePhase } from "./game-phases/useBadgePhase";
-import { useSpecialEvents } from "./game-phases/useSpecialEvents";
-import { useReplayRecorder } from "./useReplayRecorder";
+// ============================================
+// 子 Hook 模块（核心业务逻辑被拆分到以下子模块中）
+// ============================================
+import { useDialogueManager, type DialogueState } from "./useDialogueManager";  // 对话/旁白管理（打字机效果、语音队列）
+import { useDayPhase } from "./game-phases/useDayPhase";        // 白天发言阶段（自由讨论、遗言）
+import { useBadgePhase } from "./game-phases/useBadgePhase";    // 警长竞选阶段（报名、演讲、投票、移交）
+import { useSpecialEvents } from "./game-phases/useSpecialEvents"; // 特殊事件（夜晚结算、猎人开枪、游戏结束）
+import { useReplayRecorder } from "./useReplayRecorder";        // 回放记录器（记录完整对局时间线）
 
+// ============================================
+// 辅助函数（在 Hook 外部定义，不依赖 React 状态）
+// ============================================
+
+/**
+ * 根据模型名称查找对应的 ModelRef。
+ * 优先从 PROJECT_MODELS 中查找（项目内置模型），再从 ALL_MODELS 中查找，
+ * 都找不到时回退到 zenmux provider 的默认配置。
+ */
 function getModelRefForModel(model: string): ModelRef {
   return (
     PROJECT_MODELS.find((ref) => ref.model === model) ??
@@ -70,6 +132,11 @@ function getModelRefForModel(model: string): ModelRef {
   );
 }
 
+/**
+ * 随机获取一个 AI 模型引用。
+ * 优先从 sampleModelRefs 池中采样，池为空时从 PLAYER_MODELS 中随机选择，
+ * 最终兜底使用 GENERATOR_MODEL。
+ */
 function getRandomModelRef(): ModelRef {
   const fallback = sampleModelRefs(1)[0];
   if (fallback) return fallback;
@@ -89,25 +156,40 @@ export function useGameLogic() {
   const speakerHost = t("speakers.host");
 
   // ============================================
-  // 基础状态
+  // 基础状态（UI 驱动 & 全局游戏状态）
   // ============================================
+
+  // 人类玩家昵称，持久化到 localStorage，下次打开自动填充
   const [humanName, setHumanName] = useLocalStorageState<string>("wolfcha_human_name", {
     defaultValue: "",
   });
+  // 游戏是否已开始（控制大厅/游戏桌面的 UI 切换）
   const [gameStarted, setGameStarted] = useState(false);
+  // 核心游戏状态 — 通过 Jotai atom 管理，自动持久化到 localStorage（24h TTL）
   const [gameState, setGameState] = useAtom(gameStateAtom);
+  // 加载状态（角色生成阶段显示加载动画）
   const [isLoading, setIsLoading] = useState(false);
+  // 加载进度（percent: 0-100, stage: 当前阶段名称，用于进度条 UI）
   const [loadingProgress, setLoadingProgress] = useState({ percent: 0, stage: "" });
+  // 人类玩家输入框的文本
   const [inputText, setInputText] = useState("");
+  // 是否显示玩家桌面（座位表），游戏开始后显示
   const [showTable, setShowTable] = useState(false);
+  // 游戏日志区域的 DOM 引用，用于自动滚动到底部
   const logRef = useRef<HTMLDivElement>(null);
-  
-  // Track if we've already restored the game state on mount
+
+  // ============================================
+  // 断点恢复相关的状态标记
+  // ============================================
+
+  // 是否已经执行过挂载时的状态恢复逻辑（防止重复执行）
   const hasRestoredRef = useRef(false);
-  // If the FIRST render is already "in progress", it's almost certainly restored from localStorage
+  // 组件首次渲染时，游戏是否已经在进行中（即从 localStorage 恢复的场景）
+  // 如果是，则后续 checkpoint restore useEffect 需要根据当前阶段决定如何继续流程
   const restoredInProgressOnMountRef = useRef(
     isGameInProgress(gameState) && gameState.players.length > 0
   );
+  // 是否已经从检查点恢复并推进了流程（防止 checkpoint useEffect 重复执行）
   const hasResumedFromCheckpointRef = useRef(false);
 
   // Restore game state from localStorage on mount
@@ -129,50 +211,113 @@ export function useGameLogic() {
   }, []);
 
   // ============================================
-  // 流程控制
+  // 流程控制 & Ref 架构
   // ============================================
-  const flowController = useRef(new AsyncFlowController());
-  const phaseManagerRef = useRef(new PhaseManager());
-  const phaseExtrasRef = useRef<{ phase: Phase; extras: Record<string, unknown> } | null>(null);
-  const gameStateRef = useRef<GameState>(gameState);
-  const prevPhaseRef = useRef<Phase>(gameState.phase);
-  const phaseLifecycleRef = useRef<Phase>(gameState.phase);
-  const prevDayRef = useRef<number>(gameState.day);
-  const prevDevMutationIdRef = useRef<number | undefined>(gameState.devMutationId);
-  const prevDevPhaseJumpTsRef = useRef<number | undefined>(undefined);
-  const runAISpeechRef = useRef<((state: GameState, player: Player) => Promise<void>) | null>(null);
-  const handleVoteCompleteRef = useRef<((state: GameState, result: { seat: number; count: number } | null, token: ReturnType<typeof getToken>) => Promise<void>) | null>(null);
-  const endGameRef = useRef<((state: GameState, winner: "village" | "wolf") => Promise<void>) | null>(null);
-  const resolveNightRef = useRef<((state: GameState, token: ReturnType<typeof getToken>, onComplete: (resolvedState: GameState) => Promise<void>) => Promise<void>) | null>(null);
-  const startDayPhaseInternalRef = useRef<((state: GameState, token: ReturnType<typeof getToken>, options?: { skipAnnouncements?: boolean }) => Promise<void>) | null>(null);
-  const badgeTransferRef = useRef<((state: GameState, sheriff: Player, afterTransfer: (s: GameState) => Promise<void>) => Promise<void>) | null>(null);
-  const hunterDeathRef = useRef<((state: GameState, hunter: Player, diedAtNight: boolean) => Promise<void>) | null>(null);
-  const proceedToNightRef = useRef<((state: GameState, token: ReturnType<typeof getToken>) => Promise<void>) | null>(null);
-  const onStartVoteRef = useRef<((state: GameState, token: ReturnType<typeof getToken>) => Promise<void>) | null>(null);
-  const onBadgeSpeechEndRef = useRef<((state: GameState) => Promise<void>) | null>(null);
-  const onPkSpeechEndRef = useRef<((state: GameState) => Promise<void>) | null>(null);
-  const wwkBoomCheckRef = useRef<((state: GameState, wwk: Player) => Promise<boolean>) | null>(null);
+  //
+  // 为什么需要这么多 useRef？核心原因有三：
+  //
+  // 1. **打破循环依赖**：子模块（useDayPhase、useBadgePhase 等）需要回调主模块的函数
+  //    （如 endGame、resolveNight），但主模块又需要调用子模块的函数。
+  //    如果直接在 useCallback 依赖中引用，会导致循环引用。
+  //    解法：先创建空 ref，再在函数定义后赋值（xxxRef.current = xxx）。
+  //
+  // 2. **异步回调中访问最新函数**：游戏流程涉及大量 async/await，
+  //    在 await 之后闭包捕获的函数可能是旧版本。通过 ref 始终访问 .current，
+  //    确保调用的是最新版本的函数。
+  //
+  // 3. **跨渲染保持引用**：某些状态（如 flowController、phaseManager）
+  //    需要在组件整个生命周期内保持同一实例，不能因重渲染而重建。
 
-  // 游戏启动相关 refs
-  const pendingStartStateRef = useRef<GameState | null>(null);
-  const hasContinuedAfterRevealRef = useRef(false);
-  const isAwaitingRoleRevealRef = useRef(false);
-  const showTableTimeoutRef = useRef<number | null>(null);
+  // --- 核心流程控制 ---
+  const flowController = useRef(new AsyncFlowController());  // 异步流程控制器：interrupt 中断、pause 暂停、FlowToken 验证
+  const phaseManagerRef = useRef(new PhaseManager());        // 阶段管理器：管理所有 GamePhase 实例的生命周期
+  const phaseExtrasRef = useRef<{ phase: Phase; extras: Record<string, unknown> } | null>(null);  // 暂存阶段切换时的附加数据（如投票配置、回调函数），在 onEnter 时消费
 
-  // 回调 refs（用于人类操作后继续流程）
-  const afterLastWordsRef = useRef<((state: GameState) => Promise<void>) | null>(null);
-  const nightContinueRef = useRef<((state: GameState) => Promise<void>) | null>(null);
-  const afterBadgeTransferRef = useRef<((state: GameState) => Promise<void>) | null>(null);
-  const badgeSpeechEndRef = useRef<((state: GameState) => Promise<void>) | null>(null);
+  // --- 状态追踪 refs（用于 useEffect 比较前后值，避免不必要的副作用触发） ---
+  const gameStateRef = useRef<GameState>(gameState);         // 始终指向最新的 gameState，供异步回调读取
+  const prevPhaseRef = useRef<Phase>(gameState.phase);       // 上一次的阶段，用于检测阶段变化
+  const phaseLifecycleRef = useRef<Phase>(gameState.phase);  // 阶段生命周期追踪（onExit/onEnter 委托）
+  const prevDayRef = useRef<number>(gameState.day);          // 上一次的天数，用于检测天数变化
+  const prevDevMutationIdRef = useRef<number | undefined>(gameState.devMutationId);   // Dev 模式修改计数器
+  const prevDevPhaseJumpTsRef = useRef<number | undefined>(undefined);                // Dev 阶段跳转时间戳（防重复触发）
+
+  // --- 回调 refs（子模块间的异步回调桥梁，打破循环依赖） ---
+  // 这些 ref 在函数定义后被赋值（xxxRef.current = xxx），
+  // 子模块通过 extras 参数接收 ref 的 wrapper 函数来间接调用
+  const runAISpeechRef = useRef<((state: GameState, player: Player) => Promise<void>) | null>(null);           // AI 发言生成
+  const handleVoteCompleteRef = useRef<((state: GameState, result: { seat: number; count: number } | null, token: ReturnType<typeof getToken>) => Promise<void>) | null>(null);  // 投票完成后的处理（处决、遗言、猎人等）
+  const endGameRef = useRef<((state: GameState, winner: "village" | "wolf") => Promise<void>) | null>(null);    // 游戏结束
+  const resolveNightRef = useRef<((state: GameState, token: ReturnType<typeof getToken>, onComplete: (resolvedState: GameState) => Promise<void>) => Promise<void>) | null>(null);  // 夜晚结算（统计死亡、播报结果）
+  const startDayPhaseInternalRef = useRef<((state: GameState, token: ReturnType<typeof getToken>, options?: { skipAnnouncements?: boolean }) => Promise<void>) | null>(null);       // 白天阶段入口（判断第1天走警长竞选还是直接发言）
+  const badgeTransferRef = useRef<((state: GameState, sheriff: Player, afterTransfer: (s: GameState) => Promise<void>) => Promise<void>) | null>(null);   // 警徽移交
+  const hunterDeathRef = useRef<((state: GameState, hunter: Player, diedAtNight: boolean) => Promise<void>) | null>(null);  // 猎人死亡触发开枪
+  const proceedToNightRef = useRef<((state: GameState, token: ReturnType<typeof getToken>) => Promise<void>) | null>(null); // 白天→夜晚的过渡
+  const onStartVoteRef = useRef<((state: GameState, token: ReturnType<typeof getToken>) => Promise<void>) | null>(null);    // 发起投票
+  const onBadgeSpeechEndRef = useRef<((state: GameState) => Promise<void>) | null>(null);   // 警长竞选演讲结束
+  const onPkSpeechEndRef = useRef<((state: GameState) => Promise<void>) | null>(null);      // PK 演讲结束
+  const wwkBoomCheckRef = useRef<((state: GameState, wwk: Player) => Promise<boolean>) | null>(null);  // 白狼王自爆决策
+
+  // --- 游戏启动相关 refs（控制角色揭示 → 第一晚的过渡流程） ---
+  const pendingStartStateRef = useRef<GameState | null>(null);   // 暂存 startGame 创建的初始状态，等待角色揭示后继续
+  const hasContinuedAfterRevealRef = useRef(false);              // 是否已经执行过 continueAfterRoleReveal（防重复）
+  const isAwaitingRoleRevealRef = useRef(false);                 // 是否正在等待玩家确认角色揭示（阻塞夜晚流程）
+  const showTableTimeoutRef = useRef<number | null>(null);       // 桌面显示的延迟定时器 ID
+
+  // --- 人类操作后继续流程的回调 refs ---
+  // 当流程需要等待人类玩家输入时，将"下一步"逻辑暂存到 ref 中，
+  // 人类操作完成后从 ref 中取出并执行，实现"暂停-恢复"机制
+  const afterLastWordsRef = useRef<((state: GameState) => Promise<void>) | null>(null);     // 人类遗言结束后的回调
+  const nightContinueRef = useRef<((state: GameState) => Promise<void>) | null>(null);      // 人类预言家查验后的回调（继续夜晚→白天）
+  const afterBadgeTransferRef = useRef<((state: GameState) => Promise<void>) | null>(null);  // 警徽移交完成后的回调
+  const badgeSpeechEndRef = useRef<((state: GameState) => Promise<void>) | null>(null);      // 警长演讲结束后的回调
 
   // ============================================
   // 回放记录器
   // ============================================
   const replay = useReplayRecorder();
 
+  /**
+   * 页面刷新/组件重挂载时恢复回放记录器。
+   *
+   * 问题背景：
+   *   游戏状态通过 gameStateAtom 持久化到 localStorage（见 game-machine.ts），
+   *   页面刷新后可自动恢复游戏进度。但 GameReplayRecorder 是纯内存对象，
+   *   组件重挂载时 useRef 会重新初始化为新的空实例（data = null, _started = false）。
+   *   而 startRecording() 仅在 startGame() 中被调用（新游戏开始时），
+   *   从 localStorage 恢复的进行中游戏不会触发 startGame()，导致记录器从未初始化。
+   *
+   * 后果：
+   *   游戏结束时 finishRecording() → finish() 发现 data === null 直接 return，
+   *   回放数据既不会持久化到 localStorage，也不会保留在内存中：
+   *     1. 点击"下载回放"按钮无反应（downloadJSON 发现 data 为 null）
+   *     2. 大厅游戏记录中无回放按钮（localStorage 中无回放索引）
+   *
+   * 修复方案：
+   *   在组件挂载时检测：如果游戏已开始（非 LOBBY 阶段且有玩家）但记录器未初始化，
+   *   则用当前 gameState 重新初始化记录器。
+   *   注意：此时只能记录后续事件，刷新前的事件已丢失，但至少能保证结束时有数据可保存。
+   *
+   * 依赖数组为空 []：仅在组件首次挂载时执行一次。
+   * eslint-disable-line：gameState 和 replay 不放入依赖数组是有意为之，
+   *   因为只需要在挂载时检查一次，后续由正常的 startRecording 流程接管。
+   */
+  useEffect(() => {
+    if (
+      gameState.phase !== "LOBBY" &&
+      gameState.players.length > 0 &&
+      !replay.isStarted()
+    ) {
+      replay.startRecording(gameState);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 仅在挂载时检查一次，后续由正常流程接管
+
   // ============================================
-  // 对话管理
+  // 对话管理（打字机效果、语音队列、旁白显示）
   // ============================================
+  // useDialogueManager 管理所有 UI 上显示的对话内容，包括：
+  // - 系统旁白（"天黑请闭眼"等）
+  // - AI 玩家发言（支持流式打字机效果 + 分段播放）
+  // - 人类玩家发言确认
   const dialogue = useDialogueManager();
   const {
     currentDialogue,
@@ -200,14 +345,20 @@ export function useGameLogic() {
   } = dialogue;
 
   // ============================================
-  // 派生状态
+  // 派生状态（从 gameState 派生，无需单独维护）
   // ============================================
-  const humanPlayer = gameState.players.find((p) => p.isHuman) || null;
-  const isNight = gameState.phase.includes("NIGHT");
+  const humanPlayer = gameState.players.find((p) => p.isHuman) || null;  // 人类玩家对象，观战模式下为 null
+  const isNight = gameState.phase.includes("NIGHT");                      // 当前是否为夜晚阶段
 
   // ============================================
-  // 工具函数
+  // 工具函数（通用辅助逻辑）
   // ============================================
+
+  /**
+   * 安全的阶段转换 — 先检查转换合法性（isValidTransition），
+   * 再委托给 game-master 的纯函数执行转换。
+   * 非法转换仅打印警告，不阻断流程（容错设计）。
+   */
   const transitionPhase = useCallback((state: GameState, newPhase: Phase): GameState => {
     if (!isValidTransition(state.phase, newPhase)) {
       console.warn(`[wolfcha] Invalid phase transition: ${state.phase} -> ${newPhase}`);
@@ -215,27 +366,45 @@ export function useGameLogic() {
     return rawTransitionPhase(state, newPhase);
   }, []);
 
+  /** 等待游戏取消暂停 — 在暂停时轮询检测，每 100ms 检查一次 */
   const waitForUnpause = useCallback(async () => {
     while (gameStateRef.current.isPaused) {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }, []);
 
+  /** 获取当前流程 token — 用于 FlowToken 模式，异步操作前获取，await 后检查有效性 */
   const getToken = useCallback(() => flowController.current.getToken(), []);
+  /** 检查 token 是否仍然有效（未被 interrupt 中断） */
   const isTokenValid = useCallback((token: { isValid: () => boolean }) => token.isValid(), []);
 
   // 细粒度恢复逻辑在后面定义（等 runNightPhaseAction 等函数定义后）
 
+  /** 滚动游戏日志到底部（新消息出现时自动调用） */
   const scrollToBottom = useCallback(() => {
     if (logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
   }, []);
 
+  /**
+   * 暂存阶段附加数据 — 在调用 transitionPhase 之前设置，
+   * PhaseManager 在 onEnter 时从 phaseExtrasRef 中读取并消费。
+   * 这样可以避免将大量回调函数塞进 GameState 中。
+   */
   const queuePhaseExtras = useCallback((phase: Phase, extras: Record<string, unknown>) => {
     phaseExtrasRef.current = { phase, extras };
   }, []);
 
+  /**
+   * 构建投票阶段的 extras 对象 — 包含投票阶段所需的所有回调和依赖：
+   * - token: 流程控制 token
+   * - isRevote: 是否为 PK 重投
+   * - onVoteComplete: 投票结算完成回调
+   * - onGameEnd: 游戏结束回调
+   * - runAISpeech: AI 发言回调
+   * - onRecordVoteCast/Result: 回放记录回调
+   */
   const buildVotePhaseExtras = useCallback((token: ReturnType<typeof getToken>, options?: { isRevote?: boolean }) => {
     return {
       token,
@@ -272,6 +441,10 @@ export function useGameLogic() {
     };
   }, [getToken, humanPlayer, isTokenValid, setDialogue, setGameState, setIsWaitingForAI, waitForUnpause]);
 
+  /**
+   * 构建夜晚阶段的 extras 对象 — 包含夜晚流程所需的关键回调：
+   * - onNightComplete: 夜晚行动全部完成后，触发 resolveNight（结算死亡）并进入白天
+   */
   const buildNightPhaseExtras = useCallback((token: ReturnType<typeof getToken>) => {
     return {
       token,
@@ -292,6 +465,17 @@ export function useGameLogic() {
     };
   }, [getToken, isTokenValid, setDialogue, setGameState, setIsWaitingForAI, waitForUnpause]);
 
+  /**
+   * 构建白天发言阶段的 extras 对象 — 最复杂的 extras，包含：
+   * - runAISpeech: AI 玩家发言生成
+   * - onStartVote: 发起投票
+   * - onBadgeSpeechEnd: 警长竞选演讲结束 → 进入选举投票
+   * - onPkSpeechEnd: PK 演讲结束 → 重新投票
+   * - onWhiteWolfKingBoomCheck: 白狼王自爆决策检查
+   * - onBadgeTransfer: 警徽移交
+   * - onHunterDeath: 猎人死亡（白天被处决时触发开枪）
+   * - onGameEnd: 游戏结束
+   */
   const buildDaySpeechExtras = useCallback((token: ReturnType<typeof getToken>) => {
     return {
       token,
@@ -350,6 +534,12 @@ export function useGameLogic() {
     };
   }, [setDialogue, setGameState, waitForUnpause]);
 
+  /**
+   * 执行白天发言阶段的动作 — 委托给 PhaseManager 中的 DAY_SPEECH 实例。
+   * 支持两种动作：
+   * - START_DAY_SPEECH_AFTER_BADGE: 警长竞选结束后开始自由讨论
+   * - ADVANCE_SPEAKER: 推进到下一位发言者
+   */
   const runDaySpeechAction = useCallback(
     async (
       state: GameState,
@@ -369,6 +559,12 @@ export function useGameLogic() {
     [buildDaySpeechExtras]
   );
 
+  /**
+   * 执行夜晚阶段的动作 — 委托给 PhaseManager 中的 NIGHT_START 实例。
+   * 支持的动作序列：START_NIGHT → CONTINUE_NIGHT_AFTER_GUARD →
+   *   CONTINUE_NIGHT_AFTER_WOLF → CONTINUE_NIGHT_AFTER_WITCH
+   * 每个动作完成后，Phase 内部会自动推进到下一个夜晚子阶段。
+   */
   const runNightPhaseAction = useCallback(
     async (state: GameState, token: ReturnType<typeof getToken>, action: "START_NIGHT" | "CONTINUE_NIGHT_AFTER_GUARD" | "CONTINUE_NIGHT_AFTER_WOLF" | "CONTINUE_NIGHT_AFTER_WITCH") => {
       const phaseImpl = phaseManagerRef.current.getPhase("NIGHT_START");
@@ -382,7 +578,15 @@ export function useGameLogic() {
   );
 
   // ============================================
-  // Phase lifecycle hook
+  // 阶段生命周期 useEffect（onExit/onEnter 委托）
+  // ============================================
+  // 当 gameState.phase 发生变化时，自动调用：
+  //   1. prevPhase.onExit() — 旧阶段的清理逻辑
+  //   2. nextPhase.onEnter() — 新阶段的初始化逻辑
+  //
+  // 通过 phaseExtrasRef 传递阶段配置数据（如投票阶段的回调函数），
+  // 如果没有预设 extras（如 DAY_VOTE），则在此处自动构建默认 extras。
+  // cancelled 标志防止组件卸载后继续执行异步 onExit/onEnter。
   // ============================================
   useEffect(() => {
     const prevPhase = phaseLifecycleRef.current;
@@ -423,8 +627,10 @@ export function useGameLogic() {
   }, [buildVotePhaseExtras, gameState, gameState.phase, getToken]);
 
   // ============================================
-  // 每日总结生成
+  // 每日总结生成（AI 生成当天发言摘要，供后续 LLM 调用使用）
   // ============================================
+  // 在夜晚开始时和投票前调用，将当天的长篇发言压缩为要点摘要，
+  // 减少后续 LLM 调用的 token 消耗，同时保留关键信息。
   const maybeGenerateDailySummary = useCallback(
     async (state: GameState, options?: { force?: boolean }): Promise<GameState> => {
       if (state.day <= 0) return state;
@@ -478,9 +684,10 @@ export function useGameLogic() {
   }, []);
 
   // ============================================
-  // 特殊事件处理
+  // 特殊事件处理（夜晚结算、猎人开枪、游戏结束等）
   // ============================================
-  // 缓存 access token 用于游戏会话保存
+
+  // 缓存 Supabase access token，用于游戏会话的云端持久化
   const accessTokenRef = useRef<string | null>(null);
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -496,7 +703,8 @@ export function useGameLogic() {
     return accessTokenRef.current;
   }, []);
 
-  // 监听页面卸载，记录中断的游戏会话
+  // 监听页面卸载（beforeunload），将中断的游戏会话同步到云端。
+  // 使用 sendBeacon 确保页面关闭时请求能发出（普通 fetch 可能被浏览器取消）。
   useEffect(() => {
     const handleBeforeUnload = () => {
       const summary = gameSessionTracker.getSummary();
@@ -529,6 +737,8 @@ export function useGameLogic() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
+  // 初始化特殊事件子模块 — 传入对话管理、流程控制等依赖，
+  // 返回 endGame（游戏结束处理）和 resolveNight（夜晚结算）等核心函数
   const specialEvents = useSpecialEvents({
     setDialogue,
     setIsWaitingForAI,
@@ -543,25 +753,55 @@ export function useGameLogic() {
 
   const { endGame, resolveNight } = specialEvents;
 
+  /**
+   * 安全地结束游戏 — 统一的游戏结束处理函数。
+   * 流程：
+   * 1. 记录胜负日志
+   * 2. 清理对话/语音队列/UI 状态
+   * 3. 完成回放记录并持久化到 localStorage（兜底：如果记录器未初始化则先补初始化）
+   * 4. 委托给 specialEvents.endGame 执行最终结算（统计、云端记录等）
+   */
   const endGameSafely = useCallback(
     async (state: GameState, winner: "village" | "wolf") => {
+      const reason = winner === "village"
+        ? "所有狼人已被消灭"
+        : "狼人数量大于等于好人";
+      gameLogger.win(winner, reason);  // 记录游戏胜负结果（胜方 + 原因）
+
       clearSpeechQueue();
       clearDialogue();
       setIsWaitingForAI(false);
       setWaitingForNextRound(false);
-      // 完成回放记录
+
+      /**
+       * 完成回放记录并持久化到 localStorage。
+       *
+       * 安全兜底：如果记录器尚未初始化（极端场景下 useEffect 恢复逻辑未执行或被跳过），
+       * 则在结束前强制补一次 startRecording，确保 finishRecording 能正常持久化。
+       * 即便此时 timeline 为空，至少 meta、players、finalState 等核心数据能被保存，
+       * 用户仍可通过"下载回放"或"游戏记录→回放"查看终态信息。
+       */
+      if (!replay.isStarted()) {
+        replay.startRecording(state);
+      }
       replay.finishRecording(state.gameId, winner, state);
       await endGame(state, winner);
     },
-    [clearDialogue, clearSpeechQueue, endGame, setIsWaitingForAI, setWaitingForNextRound]
+    [clearDialogue, clearSpeechQueue, endGame, replay, setIsWaitingForAI, setWaitingForNextRound]
   );
 
   endGameRef.current = endGameSafely;
   resolveNightRef.current = resolveNight;
 
   // ============================================
-  // 投票阶段（Phase 驱动）
+  // 投票阶段（由 PhaseManager 驱动，此处负责进入和结算）
   // ============================================
+
+  /**
+   * 进入投票阶段 — 清空上次投票数据，转换到 DAY_VOTE 阶段，
+   * 并通过 queuePhaseExtras 将回调函数传递给 PhaseManager。
+   * @param isRevote - 是否为 PK 平票后的重投
+   */
   const enterVotePhase = useCallback(
     async (state: GameState, token: ReturnType<typeof getToken>, options?: { isRevote?: boolean }) => {
       // 投票阶段不再触发总结 - 避免重复调用
@@ -580,6 +820,10 @@ export function useGameLogic() {
     [buildVotePhaseExtras, queuePhaseExtras, setGameState, transitionPhase]
   );
 
+  /**
+   * 触发投票结算 — 委托给 PhaseManager 的 DAY_VOTE 实例执行 RESOLVE_VOTES 动作。
+   * Phase 内部会统计票数、处理平票 PK、调用 onVoteComplete 回调。
+   */
   const resolveVotePhase = useCallback(
     async (state: GameState, token: ReturnType<typeof getToken>) => {
       const phaseImpl = phaseManagerRef.current.getPhase("DAY_VOTE");
@@ -592,6 +836,11 @@ export function useGameLogic() {
     [buildVotePhaseExtras]
   );
 
+  /**
+   * 安全的投票结算 — 通过 isResolvingVotesRef 防止重复触发。
+   * 多个地方可能同时检测到"全员已投票"（useEffect + handleHumanVote），
+   * 此互斥锁确保结算只执行一次。
+   */
   const resolveVotesSafely = useCallback(async (
     state: GameState,
     token: ReturnType<typeof getToken>
@@ -606,8 +855,12 @@ export function useGameLogic() {
   }, [resolveVotePhase]);
 
   // ============================================
-  // 白天阶段
+  // 白天发言阶段（自由讨论、遗言）
   // ============================================
+  // useDayPhase 管理白天的发言流程，包括：
+  // - AI 发言生成（流式打字机效果）
+  // - 遗言阶段（被处决/夜间死亡玩家的最后发言）
+  // - 发言队列管理（分段播放、预取）
   const dayPhase = useDayPhase(humanPlayer, {
     setDialogue,
     setIsWaitingForAI,
@@ -628,8 +881,11 @@ export function useGameLogic() {
   runAISpeechRef.current = runAISpeech;
 
   // ============================================
-  // 警长竞选阶段
+  // 警长竞选阶段（报名、演讲、投票、移交）
   // ============================================
+  // useBadgePhase 管理警长竞选的完整流程：
+  // 第1天：报名 → 演讲 → 投票 → 当选
+  // 后续天：警长死亡时的警徽移交（交给存活玩家或撕毁）
   const badgePhase = useBadgePhase({
     setDialogue,
     clearDialogue,
@@ -661,8 +917,11 @@ export function useGameLogic() {
     onRecordBadgeTorn: (fromSeat, isHuman, phase, day) =>
       replay.recordBadgeTorn(fromSeat, isHuman, phase as Phase, day),
   });
-  badgeTransferRef.current = badgePhase.handleBadgeTransfer;
-  onStartVoteRef.current = enterVotePhase;
+  // 将子模块函数赋值到回调 refs，供其他模块通过 ref 间接调用
+  badgeTransferRef.current = badgePhase.handleBadgeTransfer;   // 警徽移交处理
+  onStartVoteRef.current = enterVotePhase;                     // 发起投票
+
+  // 警长竞选演讲结束回调：先生成每日总结，再进入选举投票阶段
   onBadgeSpeechEndRef.current = async (state: GameState) => {
     const summarized = await maybeGenerateDailySummary(state);
     if (summarized !== state) {
@@ -670,6 +929,7 @@ export function useGameLogic() {
     }
     await badgePhase.startBadgeElectionPhase(summarized);
   };
+  // PK 演讲结束回调：根据 PK 来源（警长竞选 or 投票平票）重新进入对应的投票阶段
   onPkSpeechEndRef.current = async (state: GameState) => {
     const token = getToken();
     const nextState = {
@@ -689,7 +949,12 @@ export function useGameLogic() {
     }
   };
 
-  // AI白狼王自爆决策
+  /**
+   * AI 白狼王自爆决策 — 由白天发言阶段在白狼王发言时触发检查。
+   * 流程：AI 决策是否自爆 → 选择带走目标 → 执行自爆（自杀+杀目标）→
+   *   处理警徽撕毁 → 被带走的猎人可开枪 → 胜负检查 → 继续游戏
+   * @returns true 表示已执行自爆（流程已接管），false 表示不自爆
+   */
   wwkBoomCheckRef.current = async (state: GameState, wwk: Player): Promise<boolean> => {
     if (state.roleAbilities.whiteWolfKingBoomUsed) return false;
     if (!wwk.agentProfile?.modelRef) return false;
@@ -771,8 +1036,16 @@ export function useGameLogic() {
   };
 
   // ============================================
-  // 内部流程函数
+  // 内部流程函数（昼夜循环的核心衔接逻辑）
   // ============================================
+
+  /**
+   * 白天阶段入口 — 判断应该进入哪种白天流程：
+   * - 第1天且无警长 → 进入警长竞选流程（报名 → 演讲 → 投票）
+   * - 其他情况 → 直接进入自由讨论发言
+   *
+   * 此函数是夜晚结算后进入白天的统一入口，也被检查点恢复逻辑调用。
+   */
   const startDayPhaseInternal = useCallback(async (
     state: GameState,
     token: ReturnType<typeof getToken>,
@@ -780,17 +1053,31 @@ export function useGameLogic() {
   ) => {
     // 第一天：先进行警徽评选
     if (state.day === 1 && state.badge.holderSeat === null) {
+      gameLogger.flow("第1天：进入警长竞选流程");  // 记录流程分支：第1天走警长竞选
       await badgePhase.startBadgeSignupPhase(state);
       return;
     }
     // 非第一天：直接进入讨论
+    const aliveCount = state.players.filter((p) => p.alive).length;
+    gameLogger.speechPhase(`第${state.day}天 自由发言阶段开始 (共${aliveCount}位存活玩家)`);  // 记录发言阶段开始
     await runDaySpeechAction(state, token, "START_DAY_SPEECH_AFTER_BADGE", options);
   }, [badgePhase, runDaySpeechAction]);
   startDayPhaseInternalRef.current = startDayPhaseInternal;
 
+  /**
+   * 白天→夜晚过渡 — 完整的昼夜切换流程：
+   * 1. 同步游戏进度到数据库
+   * 2. 递增天数，清除夜晚行动数据（保留守卫上次目标和预言家历史）
+   * 3. 转换到 NIGHT_START 阶段
+   * 4. 播放"天黑请闭眼"旁白语音
+   * 5. 生成每日总结（AI 压缩当天发言为要点）
+   * 6. 启动夜晚行动流程（守卫→狼人→女巫→预言家）
+   */
   const proceedToNight = useCallback(async (state: GameState, token: ReturnType<typeof getToken>) => {
     if (!isTokenValid(token)) return;
     if (isAwaitingRoleRevealRef.current) return;
+
+    gameLogger.flow(`第${state.day}天结束，进入夜晚`);  // 记录昼夜切换
 
     // 天黑时同步游戏进度到数据库（incrementRound 内部会立即同步）
     gameSessionTracker.incrementRound().catch(() => {});
@@ -838,7 +1125,16 @@ export function useGameLogic() {
 
   // ============================================
   // 从检查点恢复后的细粒度推进
-  // 根据恢复的具体阶段决定如何继续流程
+  // ============================================
+  // 页面刷新后，游戏状态从 localStorage 恢复，但异步流程全部丢失。
+  // 此 useEffect 根据恢复时的具体阶段，决定如何重新推进游戏：
+  //
+  // - NIGHT_* 阶段：检查每个子阶段的完成状态，决定从哪里重新开始
+  // - DAY_* 阶段：检查当前发言者状态，恢复到正确的等待状态
+  // - DAY_VOTE：检查是否全员已投票，是则自动结算
+  //
+  // 对于需要人类输入的阶段（守卫、狼人、女巫、预言家），恢复到等待输入状态；
+  // 对于 AI 阶段，重新触发 AI 行动。
   // ============================================
   useEffect(() => {
     if (!restoredInProgressOnMountRef.current) return;
@@ -850,7 +1146,7 @@ export function useGameLogic() {
     hasResumedFromCheckpointRef.current = true;
     const token = getToken();
 
-    console.info(`[wolfcha] Resuming from checkpoint at phase ${s.phase}, day ${s.day}`);
+    gameLogger.checkpointRestore(s.phase, s.day);  // 记录从 localStorage 恢复的检查点
 
     const uiText = getUiText();
     const speakerHint = t("speakers.hint");
@@ -1104,6 +1400,12 @@ export function useGameLogic() {
     }
   }, [badgePhase, getToken, runAISpeech, runDaySpeechAction, runNightPhaseAction, resolveNight, resolveVotesSafely, setDialogue, setWaitingForNextRound, startDayPhaseInternal, t]);
 
+  /**
+   * 猎人死亡处理 — 当猎人被杀（夜间/处决/白狼王自爆）时触发开枪流程。
+   * 猎人选择一个目标射杀后，根据死亡时机决定：
+   * - diedAtNight=true → 跳过遗言，直接进入白天（skipAnnouncements）
+   * - diedAtNight=false → 进入夜晚
+   */
   hunterDeathRef.current = async (state: GameState, hunter: Player, diedAtNight: boolean) => {
     const token = getToken();
     await specialEvents.handleHunterDeath(state, hunter, diedAtNight, token, async (afterState) => {
@@ -1118,6 +1420,21 @@ export function useGameLogic() {
     });
   };
 
+  /**
+   * 投票完成后的完整处理流程 — 投票结算后的"后处理链"：
+   *
+   * 有处决目标时：
+   *   1. 记录投票结果日志
+   *   2. 进入遗言阶段（startLastWordsPhase）
+   *   3. 遗言结束后：
+   *      a. 如果被处决者是警长 → 警徽移交（badgeTransfer）→
+   *         移交后检查猎人开枪 → 胜负检查 → 进入夜晚
+   *      b. 如果被处决者是猎人 → 猎人开枪 → 胜负检查 → 进入夜晚
+   *      c. 其他情况 → 胜负检查 → 进入夜晚
+   *
+   * 平票（无处决目标）时：
+   *   直接进入夜晚
+   */
   const handleVoteComplete = useCallback(async (
     state: GameState,
     result: { seat: number; count: number } | null,
@@ -1126,6 +1443,10 @@ export function useGameLogic() {
     if (result) {
       const executedPlayer = state.players.find((p) => p.seat === result.seat);
       const isSheriff = state.badge.holderSeat === result.seat;
+
+      if (executedPlayer) {
+        gameLogger.voteResult(`${executedPlayer.displayName}(座位${result.seat + 1}) 被投票处决 (${result.count}票)`);  // 记录投票处决结果
+      }
 
       await delay(DELAY_CONFIG.MEDIUM);
       if (!isTokenValid(token)) return;
@@ -1178,6 +1499,7 @@ export function useGameLogic() {
     }
 
     // 平票，等待一段时间让用户看到结果，然后进入夜晚
+    gameLogger.voteResult("平票，无人被处决");  // 记录平票结果
     await delay(DELAY_CONFIG.MEDIUM);
     if (!isTokenValid(token)) return;
     await proceedToNight(state, token);
@@ -1187,7 +1509,16 @@ export function useGameLogic() {
   
 
   // ============================================
-  // 投票完成监控（安全保障机制）
+  // 投票完成监控（安全保障机制 / 兜底触发）
+  // ============================================
+  // 此 useEffect 是投票结算的"安全网"：
+  // 当所有应投票的玩家（排除已翻牌白痴、PK 选手）都已投票，
+  // 且当前不在等待 AI 状态时，自动触发 resolveVotePhase。
+  //
+  // 这解决了以下场景：
+  // - handleHumanVote 中的结算检查因竞态条件被跳过
+  // - AI 投票后没有正确触发结算
+  // - 页面刷新恢复后所有投票已完成但未结算
   // ============================================
   const isResolvingVotesRef = useRef(false);
   useEffect(() => {
@@ -1215,8 +1546,17 @@ export function useGameLogic() {
   }, [gameState.phase, gameState.votes, gameState.players, getToken, resolveVotesSafely, isWaitingForAI]);
 
   // ============================================
-  // 同步 gameStateRef
+  // 同步 gameStateRef & Dev Mode 容错处理
   // ============================================
+  // 此 useEffect 做两件事：
+  // 1. 始终将最新 gameState 同步到 gameStateRef.current
+  //    （供异步回调读取最新状态）
+  //
+  // 2. Dev Mode 容错：当 Dev 面板修改了游戏状态（devMutationId 变化）时：
+  //    - 中断当前所有异步流程（interrupt）
+  //    - 清理 UI 状态（对话、输入框、等待标志）
+  //    - 对"软编辑"（不改变阶段/天数的修改），尝试自动继续被中断的流程
+  //      例如：手动补齐夜晚行动数据后，自动推进到下一子阶段
   useEffect(() => {
     gameStateRef.current = gameState;
 
@@ -1310,8 +1650,16 @@ export function useGameLogic() {
   }, [gameState, currentDialogue, inputText, isWaitingForAI, waitingForNextRound, clearDialogue, clearSpeechQueue, setIsWaitingForAI, setWaitingForNextRound, runNightPhaseAction, resolveNight, startDayPhaseInternal, resolveVotePhase]);
 
   // ============================================
-  // Dev Phase Jump 处理
+  // Dev Phase Jump 处理（开发模式阶段跳转）
   // ============================================
+  // Dev 面板允许开发者直接跳转到任意游戏阶段。
+  // 当检测到 devPhaseJump payload 时：
+  //   1. 中断当前流程
+  //   2. 根据目标阶段调用对应的流程函数
+  //   3. 清除跳转标记（防止重复触发）
+  //
+  // 支持的跳转目标：NIGHT_START/GUARD/WOLF/WITCH/SEER/RESOLVE、
+  //   DAY_START/SPEECH/VOTE/LAST_WORDS/RESOLVE
   useEffect(() => {
     const payload = gameState.devPhaseJump;
     if (!payload) return;
@@ -1380,8 +1728,27 @@ export function useGameLogic() {
     })();
   }, [gameState.devPhaseJump, getToken, runNightPhaseAction, resolveNight, startDayPhaseInternal, enterVotePhase, startLastWordsPhase, resolveVotePhase, proceedToNight, setGameState]);
 
-  /** 开始游戏 */
-  /** 开始游戏：解析配置选项，生成角色并初始化游戏状态 */
+  /**
+   * 开始游戏 — 完整的游戏初始化流程，包含以下步骤：
+   *
+   * 1. **重置状态** — 清空对话、输入框、桌面显示等 UI 状态
+   * 2. **统计追踪初始化** — 启动 gameStatsTracker 和 gameSessionTracker
+   * 3. **场景生成** — 随机选择一个游戏场景（原神模式除外）
+   * 4. **玩家初始化** — 创建空的玩家列表（人类座位 0，其余为 AI）
+   * 5. **角色生成** — 三条路径：
+   *    - 自定义角色列表（customCharacters）→ 直接使用
+   *    - 原神模式（isGenshinMode）→ 生成原神角色
+   *    - 标准模式 → 调用 generateCharacters（异步流式生成，带动画效果）
+   * 6. **角色分配** — 调用 setupPlayers 分配狼人/村民等角色和模型
+   * 7. **初始状态创建** — 创建 GameState，设置为 NIGHT_START 阶段
+   * 8. **日志记录** — 记录游戏开始和角色分配
+   * 9. **Dev 预设** — 如果指定了 devPreset，跳转到对应阶段
+   * 10. **回放记录** — 启动 replay recorder
+   * 11. **角色揭示** — 设置 pendingStartState，等待玩家确认角色
+   *     （观战模式跳过揭示，直接开始夜晚流程）
+   *
+   * @param options - 游戏配置选项（角色、人数、难度、模式等）
+   */
   const startGame = useCallback(async (options?: Partial<StartGameOptions>) => {
     const {
       fixedRoles,                      // 自定义角色分配（开发模式或自定义配置时使用）
@@ -1693,6 +2060,14 @@ export function useGameLogic() {
       newState = addSystemMessage(newState, systemMessages.gameStart);
       newState = addSystemMessage(newState, systemMessages.nightFall(1));
 
+      // 记录角色分配日志
+      const roleList = players
+        .filter((p) => !p.isHuman)
+        .map((p) => `${p.displayName}(${p.role})`)
+        .join(", ");
+      gameLogger.gameStart(totalPlayers, difficulty);   // 记录游戏开始（人数、难度）
+      gameLogger.rolesAssigned(roleList);                // 记录角色分配详情（AI玩家名+角色）
+
       // Dev 预设处理
       if (devPreset === "MILK_POISON_TEST") {
         const newPlayers = newState.players.map((p, i) => {
@@ -1766,6 +2141,7 @@ export function useGameLogic() {
       }
     } catch (error) {
       const msg = String(error);
+      gameLogger.flow(`游戏启动失败: ${msg}`);  // 记录启动失败（网络错误、API 限流等）
       if (isQuotaExhaustedMessage(msg)) {
         toast.error(t("gameLogicMessages.quotaExhausted.title"), {
           description: t("gameLogicMessages.quotaExhausted.description"),
@@ -1789,10 +2165,18 @@ export function useGameLogic() {
     }
   }, [humanName, resetDialogueState, setDialogue, setGameStarted, setGameState, setInputText, setIsLoading, setShowTable, t]);
 
-  /** 角色揭示后继续 */
+  /**
+   * 角色揭示后继续 — 玩家在角色揭示界面点击确认后调用。
+   * 流程：
+   * 1. 从 pendingStartStateRef 获取暂存的初始状态
+   * 2. 标记已继续（防重复）
+   * 3. 播放"天黑请闭眼"旁白语音
+   * 4. 启动夜晚行动流程（守卫→狼人→女巫→预言家）
+   */
   const continueAfterRoleReveal = useCallback(async () => {
     const token = getToken();
     const pending = pendingStartStateRef.current ?? gameStateRef.current;
+    gameLogger.flow("角色揭示完毕，进入第一晚");  // 记录角色揭示 → 第一晚过渡
     if (!pending) return;
     // Only meaningful at NIGHT_START (role reveal screen)
     if (pending.phase !== "NIGHT_START") return;
@@ -1815,8 +2199,22 @@ export function useGameLogic() {
     await runNightPhaseAction(pending, token, "START_NIGHT");
   }, [getToken, isTokenValid, runNightPhaseAction, setDialogue, speakerHost]);
 
-  /** 重新开始 */
+  /**
+   * 重新开始游戏 — 完全重置所有状态，回到大厅。
+   * 按顺序执行：
+   * 1. 记录重启日志
+   * 2. 中断所有异步流程（flowController.interrupt）
+   * 3. 结束当前游戏会话（云端标记为未完成）
+   * 4. 清除 localStorage 中的持久化状态
+   * 5. 重置 gameState 到初始值
+   * 6. 重置对话状态、输入框、桌面显示
+   * 7. 清理所有 refs（回调、标记、定时器）
+   */
   const restartGame = useCallback(() => {
+    gameLogger.gameRestart();  // 记录游戏重启事件
+    // 清空日志在 gameRestart 之后、重置状态之前，这样"游戏重启"这条日志也会被记录
+    setTimeout(() => gameLogger.clearLogs(), 100);  // 延迟清空，确保重启日志被写入
+
     // 1. 中断所有异步流程
     flowController.current.interrupt();
 
@@ -1856,7 +2254,11 @@ export function useGameLogic() {
     }
   }, [setGameState, resetDialogueState]);
 
-  /** 人类发言 */
+  /**
+   * 人类玩家发言 — 将输入框文本添加到游戏消息列表。
+   * 前置检查：当前阶段必须是发言阶段（DAY_SPEECH/LAST_WORDS/BADGE_SPEECH/PK_SPEECH），
+   * 且当前发言者必须是人类玩家。区分遗言和正常发言记录不同日志。
+   */
   const handleHumanSpeech = useCallback(async () => {
     if (!inputText.trim() || !humanPlayer) return;
 
@@ -1865,13 +2267,24 @@ export function useGameLogic() {
     if (!isMyTurn) return;
 
     const speech = inputText.trim();
+    const isLastWords = s.phase === "DAY_LAST_WORDS";
+    if (isLastWords) {
+      gameLogger.lastWords(humanPlayer.seat, humanPlayer.displayName, true);  // 记录人类遗言
+    } else {
+      gameLogger.speech(humanPlayer.seat, humanPlayer.displayName, true);     // 记录人类发言
+    }
     setInputText("");
 
     const currentState = addPlayerMessage(gameStateRef.current, humanPlayer.playerId, speech);
     setGameState(currentState);
   }, [inputText, humanPlayer, setGameState]);
 
-  /** 人类结束发言 */
+  /**
+   * 人类玩家结束发言 — 点击"结束发言"按钮后调用。
+   * - 遗言阶段：调用 afterLastWordsRef 中的回调（进入夜晚或继续流程）
+   * - 正常发言：调用 ADVANCE_SPEAKER 推进到下一位发言者
+   * 延迟 300ms 是为了让最后一条消息的动画播放完毕。
+   */
   const handleFinishSpeaking = useCallback(async () => {
     if (!humanPlayer) return;
 
@@ -1899,7 +2312,10 @@ export function useGameLogic() {
     await runDaySpeechAction(liveState, token, "ADVANCE_SPEAKER");
   }, [humanPlayer, getToken, runDaySpeechAction]);
 
-  /** 下一轮按钮 */
+  /**
+   * 下一轮按钮 — 当一轮发言结束、显示"下一轮"按钮时调用。
+   * 清除等待标志，推进到下一位发言者。
+   */
   const handleNextRound = useCallback(async () => {
     const startState = gameStateRef.current;
     const startGameId = startState.gameId;
@@ -1920,7 +2336,15 @@ export function useGameLogic() {
     await runDaySpeechAction(liveState, token, "ADVANCE_SPEAKER");
   }, [getToken, runDaySpeechAction, setWaitingForNextRound]);
 
-  /** 人类投票 */
+  /**
+   * 人类玩家投票 — 处理投票提交和自动结算。
+   * 支持两种投票场景：
+   * - DAY_BADGE_ELECTION：警长选举投票（记录到 badge.votes）
+   * - DAY_VOTE：普通投票/PK 投票（记录到 votes）
+   *
+   * 投票后自动检查是否全员已投票，是则触发结算（resolveVotesSafely）。
+   * 使用函数式 setGameState 更新确保状态一致性。
+   */
   const handleHumanVote = useCallback(async (targetSeat: number) => {
     if (!humanPlayer) return;
     if (!humanPlayer.alive) return;
@@ -1965,6 +2389,8 @@ export function useGameLogic() {
       }
     }
 
+    gameLogger.voteCast(humanPlayer.seat, humanPlayer.displayName, targetSeat, targetPlayer.displayName, true, false);  // 记录人类投票（投票者→目标）
+
     // 使用函数式更新确保获取最新状态（解决AI投票后状态同步问题）
     let updatedState: GameState | null = null;
     setGameState((prevState) => {
@@ -1997,7 +2423,20 @@ export function useGameLogic() {
     }
   }, [humanPlayer, setGameState, badgePhase, getToken, resolveVotesSafely, isWaitingForAI]);
 
-  /** 夜晚行动 */
+  /**
+   * 人类玩家夜晚行动 — 统一的夜晚操作分发器。
+   * 根据当前阶段和人类玩家角色，分发到对应的处理逻辑：
+   *
+   * - **守卫**（NIGHT_GUARD_ACTION）：选择守护目标（不能连续两晚守同一人）
+   * - **狼人**（NIGHT_WOLF_ACTION）：选择击杀目标（人类决定后 AI 狼人自动达成共识）
+   * - **女巫**（NIGHT_WITCH_ACTION）：使用解药救人 / 使用毒药毒杀 / 不使用
+   * - **预言家**（NIGHT_SEER_ACTION）：选择查验目标，显示查验结果，设置 nightContinue 回调
+   * - **猎人**（HUNTER_SHOOT）：选择射杀目标，检查胜负，进入下一阶段
+   * - **白狼王**（WHITE_WOLF_KING_BOOM）：选择自爆带走目标，处理警徽/猎人/胜负
+   *
+   * @param targetSeat - 目标座位号
+   * @param witchAction - 女巫专用："save"（救人）| "poison"（毒人）| "pass"（不用药）
+   */
   const handleNightAction = useCallback(async (targetSeat: number, witchAction?: "save" | "poison" | "pass") => {
     if (!humanPlayer) return;
     if (!humanPlayer.alive && gameState.phase !== "HUNTER_SHOOT") return;
@@ -2013,6 +2452,7 @@ export function useGameLogic() {
         return;
       }
       const targetPlayer = currentState.players.find((p) => p.seat === targetSeat);
+      gameLogger.guardAction(`人类守卫 选择守护 ${targetPlayer ? `座位${targetSeat + 1}-${targetPlayer.displayName}` : `座位${targetSeat + 1}`}`);  // 记录守卫守护行动
       currentState = {
         ...currentState,
         nightActions: { ...currentState.nightActions, guardTarget: targetSeat },
@@ -2027,6 +2467,7 @@ export function useGameLogic() {
     // 狼人击杀
     else if (gameState.phase === "NIGHT_WOLF_ACTION" && isWolfRole(humanPlayer.role)) {
       const targetPlayer = currentState.players.find((p) => p.seat === targetSeat);
+      gameLogger.wolfAction(`人类狼人 选择击杀 ${targetPlayer ? `座位${targetSeat + 1}-${targetPlayer.displayName}` : `座位${targetSeat + 1}`}`);  // 记录狼人击杀行动
       const wolves = currentState.players.filter((p) => isWolfRole(p.role) && p.alive);
       
       // 简化逻辑：人类狼人决定目标，其他AI狼人自动达成共识
@@ -2051,6 +2492,7 @@ export function useGameLogic() {
     // 女巫用药
     else if (gameState.phase === "NIGHT_WITCH_ACTION" && humanPlayer.role === "Witch") {
       if (witchAction === "save" && !currentState.roleAbilities.witchHealUsed) {
+        gameLogger.witchAction("人类女巫 使用解药救人");  // 记录女巫使用解药
         currentState = {
           ...currentState,
           nightActions: { ...currentState.nightActions, witchSave: true },
@@ -2059,6 +2501,7 @@ export function useGameLogic() {
         setDialogue(t("speakers.system"), t("gameLogicMessages.usedAntidote"), false);
       } else if (witchAction === "poison" && !currentState.roleAbilities.witchPoisonUsed) {
         const targetPlayer = currentState.players.find((p) => p.seat === targetSeat);
+        gameLogger.witchAction(`人类女巫 使用毒药毒杀 ${targetPlayer ? `座位${targetSeat + 1}-${targetPlayer.displayName}` : `座位${targetSeat + 1}`}`);  // 记录女巫使用毒药
         currentState = {
           ...currentState,
           nightActions: { ...currentState.nightActions, witchPoison: targetSeat },
@@ -2066,6 +2509,7 @@ export function useGameLogic() {
         };
         setDialogue(t("speakers.system"), t("gameLogicMessages.usedPoison", { seat: targetSeat + 1, name: targetPlayer?.displayName || "" }), false);
       } else {
+        gameLogger.witchAction("人类女巫 选择不使用药水");  // 记录女巫放弃用药
         setDialogue(t("speakers.system"), t("gameLogicMessages.noPotion"), false);
       }
       setGameState(currentState);
@@ -2082,6 +2526,8 @@ export function useGameLogic() {
       }
       const targetPlayer = currentState.players.find((p) => p.seat === targetSeat);
       const isWolf = targetPlayer ? targetPlayer.alignment === "wolf" : false;
+      gameLogger.seerAction(`人类预言家 查验 ${targetPlayer ? `座位${targetSeat + 1}-${targetPlayer.displayName}` : `座位${targetSeat + 1}`} → ${isWolf ? "🐺 狼人" : "✅ 好人"}`);  // 记录预言家查验结果
+
       const seerHistory = currentState.nightActions.seerHistory || [];
 
       currentState = {
@@ -2109,6 +2555,7 @@ export function useGameLogic() {
       if (targetSeat >= 0) {
         currentState = killPlayer(currentState, targetSeat);
         const target = currentState.players.find((p) => p.seat === targetSeat);
+        gameLogger.hunterShoot(humanPlayer.seat, humanPlayer.displayName, targetSeat, target?.displayName || null);  // 记录猎人开枪
         if (target) {
           currentState = addSystemMessage(currentState, systemMessages.hunterShoot(humanPlayer.seat + 1, targetSeat + 1, target.displayName));
           setDialogue(speakerHost, systemMessages.hunterShoot(humanPlayer.seat + 1, targetSeat + 1, target.displayName), false);
@@ -2222,11 +2669,17 @@ export function useGameLogic() {
     }
   }, [gameState, humanPlayer, setGameState, setDialogue, setIsWaitingForAI, waitForUnpause, getToken, runNightPhaseAction, resolveNight, startDayPhaseInternal, proceedToNight, endGame, transitionPhase, speakerHost, t]);
 
-  /** 人类白狼王自爆（进入 WHITE_WOLF_KING_BOOM 阶段） */
+  /**
+   * 人类白狼王自爆 — 在白天发言阶段触发，转换到 WHITE_WOLF_KING_BOOM 阶段。
+   * 实际的自爆逻辑（杀自己、杀目标、处理警徽等）在 handleNightAction 中的
+   * WHITE_WOLF_KING_BOOM 分支处理。此处仅负责阶段转换和 UI 提示。
+   */
   const handleWhiteWolfKingBoom = useCallback(async () => {
     if (!humanPlayer || humanPlayer.role !== "WhiteWolfKing" || !humanPlayer.alive) return;
     const currentState = gameStateRef.current;
     if (currentState.roleAbilities.whiteWolfKingBoomUsed) return;
+    gameLogger.whiteWolfKingBoom(humanPlayer.seat, humanPlayer.displayName, null, null);  // 记录白狼王自爆事件
+    gameLogger.flow("人类白狼王选择自爆！");  // 记录自爆流程触发
     if (currentState.phase !== "DAY_SPEECH" && currentState.phase !== "DAY_BADGE_SPEECH" && currentState.phase !== "DAY_PK_SPEECH") return;
 
     // Transition to WWK boom phase
@@ -2236,12 +2689,25 @@ export function useGameLogic() {
     setDialogue(speakerHost, t("ui.whiteWolfKingBoom"), false);
   }, [humanPlayer, transitionPhase, setGameState, clearDialogue, setDialogue, speakerHost, t]);
 
-  /** 人类警长移交 */
+  /** 人类警长移交 — 将警徽交给指定座位的玩家，委托给 badgePhase 处理 */
   const handleHumanBadgeTransfer = useCallback(async (targetSeat: number) => {
     await badgePhase.handleHumanBadgeTransfer(targetSeat);
   }, [badgePhase]);
 
-  /** 推进发言 */
+  /**
+   * 推进发言 — 由 UI 层（对话框组件）在每段语音/文字播放完毕后调用。
+   * 核心职责：
+   * 1. 将当前分段添加到消息列表（如果尚未提交）
+   * 2. 推进语音队列到下一段
+   * 3. 如果队列播放完毕，执行 afterSpeech 回调或返回 shouldAdvanceToNextSpeaker
+   *
+   * 特殊处理：
+   * - 游戏结束/夜晚阶段时直接返回 finished
+   * - 流式传输中且当前段未完成时不推进
+   * - 对话文本超过 10000 字符时提前触发每日总结（减少 token 消耗）
+   *
+   * @returns { finished, shouldAdvanceToNextSpeaker, shouldAutoAdvanceToNextAI }
+   */
   const advanceSpeech = useCallback(async (): Promise<{ finished: boolean; shouldAdvanceToNextSpeaker: boolean; shouldAutoAdvanceToNextAI: boolean }> => {
     if (gameStateRef.current.phase === "GAME_END" || gameStateRef.current.winner) {
       clearSpeechQueue();
@@ -2325,7 +2791,7 @@ export function useGameLogic() {
     return { finished: true, shouldAdvanceToNextSpeaker: true, shouldAutoAdvanceToNextAI: false };
   }, [clearDialogue, clearSpeechQueue, setIsWaitingForAI, setWaitingForNextRound, getSpeechQueue, advanceSpeechQueue, setGameState, isCurrentSegmentCommitted, markCurrentSegmentCommitted, isCurrentSegmentCompleted]);
 
-  /** 切换暂停 */
+  /** 切换游戏暂停状态 — 暂停时所有 AI 流程会等待（通过 waitForUnpause） */
   const togglePause = useCallback(() => {
     setGameState((prev) => ({
       ...prev,
@@ -2334,7 +2800,11 @@ export function useGameLogic() {
   }, [setGameState]);
 
   // ============================================
-  // 返回 API
+  // 返回 API — 暴露给 UI 组件的完整接口
+  // ============================================
+  // 分为两大类：
+  // - State：只读状态（用于 UI 渲染）
+  // - Actions：操作函数（用于事件处理）
   // ============================================
   return {
     // State

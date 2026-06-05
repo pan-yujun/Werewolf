@@ -1447,6 +1447,14 @@
     "gameEndVillage": "Game over: Villagers win",
     "gameEndWolf": "Game over: Werewolves win"
   },
+  "gameLog": {
+    "title": "Game Log",
+    "buttonLabel": "Log",
+    "backToHistory": "Back",
+    "entryCount": "{count} entries",
+    "empty": "No logs yet",
+    "download": "Download Log"
+  },
   "wolfPlanning": {
     "title": "Wolf coordination",
     "subtitle": "Pick tonight’s kill target",

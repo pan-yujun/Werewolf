@@ -253,6 +253,17 @@ export function useReplayRecorder() {
     recorderRef.current.pushEventWithState("IDIOT_REVEALED", { type: "IDIOT_REVEALED", seat }, phase, day);
   }, []);
 
+  // === 状态查询 ===
+
+  /**
+   * 查询记录器是否已初始化。
+   * 供 useGameLogic 在组件挂载时检测是否需要恢复记录器
+   * （页面刷新后游戏状态从 localStorage 恢复，但记录器是新实例，data 为 null）。
+   */
+  const isStarted = useCallback(() => {
+    return recorderRef.current.isStarted();
+  }, []);
+
   // === 导出 ===
 
   const exportReplay = useCallback(() => {
@@ -265,6 +276,7 @@ export function useReplayRecorder() {
 
   return {
     recorder: recorderRef.current,
+    isStarted,
     // 生命周期
     startRecording,
     finishRecording,

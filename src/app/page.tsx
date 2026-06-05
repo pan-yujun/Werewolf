@@ -534,6 +534,7 @@ export default function Home() {
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
   const [isNotebookOpen, setIsNotebookOpen] = useState(false);
   const [isEventLogOpen, setIsEventLogOpen] = useState(false);
+  const [isGameLogOpen, setIsGameLogOpen] = useState(false);
   const [isDevConsoleOpen, setIsDevConsoleOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
@@ -711,7 +712,7 @@ export default function Home() {
         activeEl?.closest("[contenteditable='true']") !== null;
 
       // 如果笔记本打开，不拦截 Enter 键（让笔记本正常换行）
-      if ((isNotebookOpen || isEventLogOpen) && e.key === "Enter") return;
+      if ((isNotebookOpen || isEventLogOpen || isGameLogOpen) && e.key === "Enter") return;
 
       // 如果焦点在输入元素内，不拦截左右方向键（让光标正常移动）
       if (isInInput && (e.key === "ArrowLeft" || e.key === "ArrowRight")) return;
@@ -743,7 +744,7 @@ export default function Home() {
     
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentDialogue, waitingForNextRound, advanceSpeech, handleNextRound, isRoleRevealOpen, isNotebookOpen, isEventLogOpen]);
+  }, [currentDialogue, waitingForNextRound, advanceSpeech, handleNextRound, isRoleRevealOpen, isNotebookOpen, isEventLogOpen, isGameLogOpen]);
 
   const handleAdvanceDialogue = useCallback(async () => {
     if (isRoleRevealOpen) return;
@@ -793,7 +794,7 @@ export default function Home() {
       clearAutoAdvanceTimeout();
       return;
     }
-    if (isNotebookOpen || isEventLogOpen) {
+    if (isNotebookOpen || isEventLogOpen || isGameLogOpen) {
       clearAutoAdvanceTimeout();
       return;
     }
@@ -853,6 +854,7 @@ export default function Home() {
     humanPlayer,
     isAutoAdvanceDialogueEnabled,
     isEventLogOpen,
+    isGameLogOpen,
     isNotebookOpen,
     isRoleRevealOpen,
     isSettingsOpen,
@@ -1623,6 +1625,8 @@ export default function Home() {
                       onDownloadReplay={downloadReplay}
                       isEventLogOpen={isEventLogOpen}
                       onEventLogOpenChange={setIsEventLogOpen}
+                      isGameLogOpen={isGameLogOpen}
+                      onGameLogOpenChange={setIsGameLogOpen}
                     />
 
                     {/* 移动端玩家条 */}

@@ -51,11 +51,32 @@ export class GameReplayRecorder {
   private data: GameReplayData | null = null;
   private eventCounter = 0;
 
+  /**
+   * 记录器是否已通过 start() 初始化。
+   *
+   * 背景：游戏状态通过 gameStateAtom 持久化到 localStorage，页面刷新后可恢复。
+   * 但 GameReplayRecorder 是纯内存对象，组件重挂载时会重新创建新实例（data = null）。
+   * 如果不跟踪初始化状态，就无法在重挂载后判断记录器是否需要重新初始化，
+   * 导致 finish() 因 data === null 静默跳过持久化，最终造成：
+   *   1. 游戏结束界面"下载回放"按钮点击无反应（downloadJSON 发现 data 为 null 直接返回）
+   *   2. 大厅游戏记录中无回放按钮（回放数据从未写入 localStorage）
+   */
+  private _started = false;
+
   // === 生命周期 ===
+
+  /**
+   * 查询记录器是否已初始化（即 start() 是否已被调用过）。
+   * 用于 useGameLogic 中检测页面刷新后的恢复场景。
+   */
+  isStarted(): boolean {
+    return this._started;
+  }
 
   /** 游戏开始时调用，初始化 meta + players */
   start(config: ReplayMeta["config"], players: ReplayPlayer[]): void {
     this.eventCounter = 0;
+    this._started = true;
     this.data = {
       meta: {
         gameId: "",
@@ -146,18 +167,35 @@ export class GameReplayRecorder {
     return JSON.stringify(this.data, null, 2);
   }
 
-  /** 触发浏览器下载 */
+  /**
+   * 触发浏览器下载回放 JSON 文件。
+   *
+   * 修复点：
+   * 1. 当 data 为 null 时打印警告日志，方便排查"点击下载无反应"的问题
+   * 2. 将 <a> 元素先挂载到 document.body 再触发 click，兼容部分浏览器
+   *    （某些浏览器对未挂载到 DOM 的 <a> 标签 click() 不生效）
+   * 3. URL.revokeObjectURL 延迟 1 秒执行，避免浏览器还没开始读取 blob 就被释放的竞态问题
+   *    （原代码在 a.click() 后立即 revoke，部分浏览器可能来不及启动下载）
+   */
   downloadJSON(filename?: string): void {
     const json = this.exportJSON();
-    if (!json) return;
+    if (!json) {
+      // data 为 null 的典型场景：页面刷新后记录器被重新创建但未重新初始化
+      console.warn("[wolfcha] downloadJSON: no replay data to download");
+      return;
+    }
     const name = filename ?? `wolfcha-replay-${this.data?.meta.gameId ?? "unknown"}.json`;
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = name;
+    // 挂载到 DOM 以确保 click 在所有浏览器中生效
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    // 延迟释放 blob URL，给浏览器足够时间启动下载流
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   // === 阶段记录 ===
@@ -497,8 +535,10 @@ export class GameReplayRecorder {
         }
       }
       window.localStorage.setItem(REPLAY_INDEX_KEY, JSON.stringify(index));
-    } catch {
-      // localStorage 满或不可用时静默失败
+    } catch (err) {
+      // localStorage 满或不可用时记录警告（原代码静默失败，排查问题时无任何线索）
+      // 常见触发场景：localStorage 配额耗尽（通常为 5-10MB）、隐私模式下不可用
+      console.warn("[wolfcha] Failed to persist replay to localStorage:", err);
     }
   }
 

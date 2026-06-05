@@ -1,34 +1,88 @@
 "use client";
 
+/**
+ * DialogArea - 游戏主对话区域组件
+ *
+ * 这是游戏交互的核心 UI 组件，负责渲染整个对话界面。布局分为三大区域：
+ *
+ * 1. 【上方左侧 - 立绘区域】
+ *    - 夜晚行动阶段：显示对应职业的角色立绘（狼人、女巫、预言家等），带光晕特效
+ *    - 白天发言阶段：显示当前发言者的 TalkingAvatar（带嘴型动画）
+ *    - 移动端隐藏，仅在 md 及以上断点显示
+ *
+ * 2. 【上方右侧 - 聊天历史记录区域】
+ *    - 可滚动的消息列表，显示所有玩家对话和系统消息
+ *    - 左上角：游戏日志按钮（GameLogPanel）- 显示实时中文游戏进程日志
+ *    - 右上角：事件日志按钮（EventLog）- 显示关键事件摘要
+ *    - 两个日志均为覆盖层（overlay），打开时隐藏聊天历史
+ *    - 底部：新消息未读提示条（仅在用户上滚时出现）
+ *
+ * 3. 【下方 - 行动面板区域】
+ *    - 投票进度条（VotingProgress）
+ *    - 狼人协作面板（WolfPlanningPanel）
+ *    - 对话气泡（AI 对话内容展示 + 打字机效果）
+ *    - 人类输入区（MentionInput + 发送按钮 + 结束发言按钮 + 语音录制）
+ *    - 女巫行动面板（救人/毒杀/跳过）
+ *    - 警徽竞选报名面板
+ *    - 游戏结束画面（角色揭晓 + 下载回放 + 重新开始）
+ *    - 夜晚等待动画（AI 行动中的脉冲圆点）
+ */
+
+/* =====================================================================
+ * 导入区域
+ * ===================================================================== */
+
+// React 核心 hooks
 import React, { useRef, useEffect, useMemo, useState, useCallback } from "react";
+// 动画库：motion 基础动画、AnimatePresence 进出场动画、LayoutGroup 布局动画
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+// Markdown 渲染：用于 AI 对话内容的富文本展示（支持加粗、斜体、列表等）
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChatCircleDots, PaperPlaneTilt, CheckCircle, MoonStars, Eye, Drop, Crosshair, Skull, X, ArrowClockwise, CaretRight, UserCircle, Prohibit, ClipboardText, DownloadSimple } from "@phosphor-icons/react";
+// Phosphor 图标库：各类 UI 图标
+import { ChatCircleDots, PaperPlaneTilt, CheckCircle, MoonStars, Eye, Drop, Crosshair, Skull, X, ArrowClockwise, CaretRight, UserCircle, Prohibit, ClipboardText, DownloadSimple, Scroll } from "@phosphor-icons/react";
+// 自定义扁平图标：狼人、村民、投票等游戏专用图标
 import { WerewolfIcon, VillagerIcon, VoteIcon } from "@/components/icons/FlatIcons";
-import { VoteResultCard } from "./VoteResultCard";
-import { VotingProgress } from "./VotingProgress";
-import { WolfPlanningPanel } from "./WolfPlanningPanel";
-import { MentionInput } from "./MentionInput";
-import { TalkingAvatar } from "./TalkingAvatar";
-import { VoiceRecorder, type VoiceRecorderHandle } from "./VoiceRecorder";
-import { EventLog } from "./EventLog";
+// 游戏子组件
+import { VoteResultCard } from "./VoteResultCard";       // 投票结果卡片
+import { VotingProgress } from "./VotingProgress";       // 投票进度条
+import { WolfPlanningPanel } from "./WolfPlanningPanel"; // 狼人夜晚协作面板
+import { MentionInput } from "./MentionInput";           // 支持 @玩家 的输入框
+import { TalkingAvatar } from "./TalkingAvatar";         // 带嘴型动画的头像组件
+import { VoiceRecorder, type VoiceRecorderHandle } from "./VoiceRecorder"; // 语音录制器
+import { EventLog } from "./EventLog";                   // 事件日志面板
+import { GameLogPanel } from "./GameLogPanel";           // 游戏进程日志面板（中文实时日志）
+// 工具函数：头像 URL 生成、模型 Logo
 import { buildSimpleAvatarUrl, getModelLogoUrl } from "@/lib/avatar-config";
+// 角色揭晓历史卡片（游戏结束时展示所有玩家的真实角色）
 import { RoleRevealHistoryCard, type RoleRevealEntry } from "@/components/game/RoleRevealHistoryCard";
+// 等待时的迷你小游戏（空状态展示）
 import LoadingMiniGame from "./MiniGame/LoadingMiniGame";
+// 游戏类型定义
 import type { GameState, Player, ChatMessage, Phase } from "@/types/game";
-import { isWolfRole } from "@/types/game";
+import { isWolfRole } from "@/types/game"; // 判断是否为狼人阵营角色
+// 工具：className 合并、音频管理、国际化
 import { cn } from "@/lib/utils";
 import { audioManager } from "@/lib/audio-manager";
 import { getLocale } from "@/i18n/locale-store";
 import { useTranslations } from "next-intl";
 
+/**
+ * 女巫行动类型
+ * - "save"  : 使用解药救人（救被狼人击杀的玩家）
+ * - "poison": 使用毒药毒杀（选择一名玩家毒杀）
+ * - "pass"  : 跳过（本回合不使用任何药水）
+ */
 type WitchActionType = "save" | "poison" | "pass";
 import type { DialogueState } from "@/store/game-machine";
 
 const HISTORY_BOTTOM_THRESHOLD = 24;
 
-// 职业立绘映射
+/* =====================================================================
+ * 职业立绘相关
+ * ===================================================================== */
+
+/** 职业英文名 -> 立绘图片路径的映射表 */
 const ROLE_PORTRAIT_MAP: Record<string, string> = {
   Werewolf: '/roles/werewolf.png',
   WhiteWolfKing: '/roles/white-wolf-king.png',
@@ -40,7 +94,7 @@ const ROLE_PORTRAIT_MAP: Record<string, string> = {
   Villager: '/roles/villager.png',
 };
 
-// 预加载所有职业立绘
+/** 预加载所有职业立绘图片，避免夜晚阶段切换时出现图片加载延迟 */
 const ALL_ROLE_PORTRAITS = Object.values(ROLE_PORTRAIT_MAP);
 let portraitsPreloaded = false;
 
@@ -54,7 +108,10 @@ function preloadRolePortraits() {
   });
 }
 
-// 获取当前阶段对应的角色（需要人类玩家角色来区分狼人/白狼王）
+/**
+ * 根据当前游戏阶段获取对应的角色标识，用于在立绘区域显示正确的角色立绘。
+ * 需要 humanRole 参数来区分狼人和白狼王（两者夜晚行动阶段相同，但立绘不同）。
+ */
 const getPhaseRole = (phase: Phase, humanRole?: string): string | null => {
   switch (phase) {
     case 'NIGHT_GUARD_ACTION': return 'Guard';
@@ -67,6 +124,7 @@ const getPhaseRole = (phase: Phase, humanRole?: string): string | null => {
   }
 };
 
+/** 获取玩家头像 URL，原神模式下非人类玩家使用模型 Logo */
 const getPlayerAvatarUrl = (player: Player, isGenshinMode: boolean) =>
   isGenshinMode && !player.isHuman
     ? getModelLogoUrl(player.agentProfile?.modelRef)
@@ -76,7 +134,11 @@ function isTurnPromptSystemMessage(content: string, t: ReturnType<typeof useTran
   return content.includes(t("dialog.turnToSpeak")) || content.includes(t("dialog.turnToLastWords"));
 }
 
-// 将消息中的"@X号 玩家名"或"X号"渲染为小标签
+/**
+ * 将消息文本中的 "@X号" 或 "X号" 提及模式渲染为带头像的小标签。
+ * 匹配到的玩家会显示头像缩略图 + @座位号，未匹配到的仅格式化文本。
+ * 夜晚模式使用浅色高亮，白天模式使用强调色。
+ */
 function renderPlayerMentions(
   text: string,
   players: Player[],
@@ -150,7 +212,11 @@ function renderPlayerMentions(
   return parts.length > 0 ? parts : text;
 }
 
-// Streaming text: treat *...* as italic and @N号 as mentions so italics show while typing
+/**
+ * 流式文本渲染：在打字机效果进行中时使用。
+ * 将 *...* 格式渲染为斜体，同时处理 @N号 提及标签。
+ * 相比完整 Markdown 渲染，此函数更轻量，适合实时逐字展示场景。
+ */
 function renderStreamingMarkdown(
   text: string,
   players: Player[],
@@ -184,6 +250,11 @@ function renderMentionsInMarkdownChildren(
   });
 }
 
+/**
+ * MentionsMarkdown - 支持 @玩家 提及的 Markdown 渲染组件
+ * 完整的 Markdown 渲染（粗体、斜体、链接、列表、代码块等），
+ * 同时在文本节点中注入 @玩家 标签高亮。用于静态对话内容展示。
+ */
 function MentionsMarkdown({
   content,
   players,
@@ -246,6 +317,18 @@ function MentionsMarkdown({
   );
 }
 
+/**
+ * DialogArea 组件的属性接口
+ *
+ * 属性分为以下几类：
+ *
+ * 【游戏状态】gameState, humanPlayer, isNight, phase 等核心游戏数据
+ * 【对话与打字机】currentDialogue, displayedText, isTyping —— AI 对话的流式展示
+ * 【输入相关】inputText, onInputChange, onSendMessage, onFinishSpeaking —— 人类玩家发言输入
+ * 【操作回调】onNightAction, onBadgeSignup, onConfirmAction, onCancelSelection 等 —— 夜晚行动、投票、警徽等操作
+ * 【游戏结束】onRestart, onDownloadReplay, onViewAnalysis —— 结束后的重开/回放/分析
+ * 【日志面板开关】isEventLogOpen, onEventLogOpenChange, isGameLogOpen, onGameLogOpenChange —— 事件日志和游戏日志的显隐控制
+ */
 interface DialogAreaProps {
   gameState: GameState;
   humanPlayer: Player | null;
@@ -282,12 +365,18 @@ interface DialogAreaProps {
   isAnalysisLoading?: boolean;
   isEventLogOpen?: boolean;
   onEventLogOpenChange?: (open: boolean) => void;
+  isGameLogOpen?: boolean;
+  onGameLogOpenChange?: (open: boolean) => void;
 }
 
-// 等待状态动画组件已移除，与当前简洁风格不符
-
-// 夜晚行动状态组件 - 带有神秘氛围
-// Note: Guard phase does not use this component - it uses the regular dialogue block instead
+/**
+ * NightActionStatus - 夜晚行动等待状态组件
+ *
+ * 当 AI 玩家正在执行夜晚行动时（狼人/女巫/预言家/猎人），在对话面板中显示带有
+ * 神秘氛围的等待动画：角色专属颜色的脉冲光球 + 状态文字 + 装饰性闪烁星星。
+ * 守卫阶段不使用此组件（守卫使用常规对话块）。
+ * 当为人类玩家的行动阶段时，显示"请睁眼"而非"正在行动"。
+ */
 function NightActionStatus({ phase, humanRole }: { phase: string; humanRole?: string }) {
   const t = useTranslations();
   
@@ -398,6 +487,8 @@ export function DialogArea({
   isAnalysisLoading = false,
   isEventLogOpen = false,
   onEventLogOpenChange,
+  isGameLogOpen = false,
+  onGameLogOpenChange,
 }: DialogAreaProps) {
   const t = useTranslations();
   const isGenshinMode = !!gameState.isGenshinMode;
@@ -444,7 +535,9 @@ export function DialogArea({
     preloadRolePortraits();
   }, []);
   
-  // 判断是否需要用户手动点击/按键继续（而非自动过场）
+  /* 判断是否需要用户手动点击/按键继续（而非自动过场）
+   * 需要手动继续的场景：白天发言阶段、等待下一轮、预言家查验完成后
+   * 不需要的场景：AI 正在组织语言/生成语音时 */
   const needsManualContinue = useMemo(() => {
     // 正在组织语言时不需要手动继续
     const dialogueText = currentDialogue?.text || "";
@@ -472,7 +565,8 @@ export function DialogArea({
     );
   }, [gameState.messages, t]);
 
-  // 获取当前发言者信息
+  /* 获取当前发言者信息
+   * 优先级：人类轮到发言 > 当前流式对话的说话人 > 最后一条非系统消息的发送者 */
   const currentSpeaker = useMemo(() => {
     if (isHumanTurn && humanPlayer) {
       return {
@@ -516,6 +610,14 @@ export function DialogArea({
 
   const stablePortraitPlayer = portraitPlayer || lastPortraitPlayerRef.current;
 
+  /* ================================================================
+   * 【左侧立绘区域】
+   * 夜晚行动阶段：根据当前阶段显示对应职业的角色立绘（狼人/女巫/预言家等），
+   *   带有角色专属颜色的光晕背景特效和模糊进出场动画。
+   * 白天发言阶段：显示当前发言玩家的 TalkingAvatar（带嘴型动画），
+   *   当音频播放中或打字机效果进行中时嘴巴会动。
+   * 无发言者时：夜晚显示月亮图标，白天显示聊天气泡图标。
+   * ================================================================ */
   const portraitNode = (
     <AnimatePresence mode="wait" initial={false}>
       {(() => {
@@ -608,7 +710,15 @@ export function DialogArea({
     </AnimatePresence>
   );
 
-  // 智能滚动逻辑
+  /* ================================================================
+   * 【智能滚动逻辑】
+   * 聊天历史区域的自动滚动管理：
+   * - 当用户在底部时：新消息自动滚动到底部（自动跟随）
+   * - 当用户手动上滚时：锁定滚动位置，累加未读消息数，显示"新消息"提示
+   * - 用户点击"新消息"提示或滚回底部时：解除锁定，恢复自动跟随
+   * - 使用 ResizeObserver 监听内容高度变化，确保流式文本也能正确滚动
+   * - 区分用户主动滚动和程序自动滚动，避免互相干扰
+   * ================================================================ */
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isManualScrollLocked, setIsManualScrollLocked] = useState(false);
@@ -812,7 +922,9 @@ export function DialogArea({
     };
   }, [isAtBottom]);
 
-  // 处理新消息到来
+  /* 【新消息处理】当有新消息到来时：
+   * - 若当前在底部且无用户交互：自动滚动到底部（自动跟随）
+   * - 若已锁定（用户手动上滚过）：累加未读消息计数 */
   useEffect(() => {
     const newCount = visibleMessages.length;
     const prevCount = prevMessageCountRef.current;
@@ -864,7 +976,8 @@ export function DialogArea({
     }, 100);
   }, [isTyping, isAtBottom]);
 
-  // 空状态
+  /* 【空状态】游戏尚未开始时的等待画面
+   * 展示旋转的狼人图标光圈动画 + "召唤中" 文案 + 迷你小游戏 */
   if (gameState.messages.length === 0 && !currentDialogue) {
     return (
       <div className="h-full w-full flex flex-col items-center justify-center text-[var(--text-muted)]">
@@ -939,6 +1052,10 @@ export function DialogArea({
     }
   };
 
+  /* 计算对话气泡中显示的文本内容
+   * 流式模式：使用打字机的 displayedText
+   * 静态模式：优先使用 displayedText，其次 currentSpeaker 的文本
+   * 警徽选举阶段：如人类已投票，显示"你已经投票给 x 号"替代默认文本 */
   const baseDialogueText = currentDialogue?.isStreaming
     ? displayedText
     : (displayedText || currentSpeaker?.text || "");
@@ -962,6 +1079,7 @@ export function DialogArea({
     "NIGHT_SEER_ACTION",
   ].includes(phase);
 
+  /* 【面板显示条件计算】根据当前阶段和玩家状态决定下方行动面板中各子面板的显隐 */
   const showGameEnd = phase === "GAME_END";
   const showBadgeSignup = phase === "DAY_BADGE_SIGNUP"
     && humanPlayer?.alive
@@ -1013,6 +1131,7 @@ export function DialogArea({
     && selectedSeat === null
     && !(phase === "NIGHT_WITCH_ACTION" && humanPlayer?.role === "Witch" && !isWaitingForAI);
 
+  /* 综合判断是否需要显示底部对话面板（任一子面板可见则显示） */
   const shouldShowDialogPanel = showGameEnd
     || showBadgeSignup
     || showBadgeSignupWaiting
@@ -1026,16 +1145,37 @@ export function DialogArea({
 
   return (
     <div className="wc-dialog-area h-full w-full flex flex-col min-h-0 justify-start">
-      {/* 上方区域：左侧立绘 + 右侧历史记录 */}
+      {/* ==================== 上方区域：左侧立绘 + 右侧历史记录 ==================== */}
       <div className="flex-1 min-h-0 w-full -mb-1">
         <div className="wc-dialog-main flex gap-4 lg:gap-6 px-4 lg:px-6 pt-0 pb-0 min-h-0 h-full items-stretch">
-          {/* 左侧立绘区域 */}
+          {/* --- 左侧立绘区域（仅桌面端显示） --- */}
           <div className="wc-dialog-portrait hidden md:flex w-[220px] lg:w-[260px] xl:w-[300px] shrink-0 flex-col items-center justify-end">
             {portraitNode}
           </div>
 
-          {/* 右侧：聊天历史记录 */}
+          {/* --- 右侧：聊天历史记录区域 --- */}
           <div className="wc-dialog-history flex-1 min-w-0 min-h-0 relative">
+            {/* 【游戏日志按钮】左上角，点击切换 GameLogPanel 覆盖层的显示/隐藏 */}
+            <div className="absolute left-2 top-2 z-20">
+              <button
+                type="button"
+                onClick={() => onGameLogOpenChange?.(!isGameLogOpen)}
+                className={cn(
+                  "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium shadow-sm backdrop-blur-sm transition-all",
+                  isNight
+                    ? "border-white/15 bg-black/25 text-white/75 hover:bg-black/35 hover:text-white"
+                    : "border-[var(--border-color)] bg-white/75 text-[var(--text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]",
+                  isGameLogOpen && (isNight
+                    ? "border-[var(--color-gold)]/40 text-[var(--color-gold)]"
+                    : "border-[var(--color-accent)] text-[var(--color-accent)]")
+                )}
+              >
+                <Scroll size={14} />
+                <span>{isGameLogOpen ? t("gameLog.backToHistory") : t("gameLog.buttonLabel")}</span>
+              </button>
+            </div>
+
+            {/* 【事件日志按钮】右上角，点击切换 EventLog 覆盖层的显示/隐藏 */}
             <div className="absolute right-2 top-2 z-20">
               <button
                 type="button"
@@ -1055,11 +1195,13 @@ export function DialogArea({
               </button>
             </div>
 
-            <motion.div 
+            {/* 【聊天消息列表】可滚动区域，展示所有玩家对话和系统消息
+                当事件日志或游戏日志打开时，此区域隐藏（opacity-0 + pointer-events-none） */}
+            <motion.div
               ref={historyRef}
               className={cn(
                 "absolute inset-0 overflow-y-scroll pb-4 pt-10 scrollbar-hide transition-opacity duration-200",
-                isEventLogOpen && "pointer-events-none opacity-0"
+                (isEventLogOpen || isGameLogOpen) && "pointer-events-none opacity-0"
               )}
               style={{
                 scrollbarGutter: "stable",
@@ -1099,6 +1241,7 @@ export function DialogArea({
               </div>
             </motion.div>
 
+            {/* 【EventLog 覆盖层】事件日志面板，打开时覆盖聊天历史，展示关键游戏事件摘要 */}
             <AnimatePresence>
               {isEventLogOpen && (
                 <motion.div
@@ -1113,10 +1256,32 @@ export function DialogArea({
                 </motion.div>
               )}
             </AnimatePresence>
-            
-            {/* 新消息提示：底部分割线 + 文案 */}
+
+            {/* 【GameLogPanel 覆盖层】游戏进程日志面板，打开时覆盖聊天历史，
+                展示实时中文游戏日志（如"夜晚降临"、"X号被击杀"等），与聊天历史互斥 */}
             <AnimatePresence>
-              {unreadCount > 0 && !isAtBottom && !isEventLogOpen && (
+              {isGameLogOpen && (
+                <motion.div
+                  key="game-log-panel-view"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                  className="absolute inset-0 overflow-hidden pt-0 scrollbar-hide"
+                >
+                  <GameLogPanel
+                    isNight={isNight}
+                    isGameEnd={gameState.phase === "GAME_END"}
+                    onClose={() => onGameLogOpenChange?.(false)}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* 【新消息未读提示】当用户上滚导致有未读消息时，在聊天区域底部显示
+                "N 条新消息" 提示条，点击可平滑滚动到底部并解除锁定 */}
+            <AnimatePresence>
+              {unreadCount > 0 && !isAtBottom && !isEventLogOpen && !isGameLogOpen && (
                 <motion.div
                   initial={{ opacity: 0, y: 10, scale: 0.9 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -1155,9 +1320,22 @@ export function DialogArea({
         </div>
       </div>
 
-      {/* 下方：对话框 - 固定在底部 */}
+      {/* ==================== 下方：行动面板区域（固定在底部） ====================
+       *  包含以下子面板（根据游戏阶段条件性显示）：
+       *  1. 投票进度条 - 白天投票/警徽选举阶段
+       *  2. 狼人协作面板 - 夜晚狼人行动阶段（人类为狼人时）
+       *  3. 对话气泡面板 - 核心面板，内部根据阶段切换显示不同内容：
+       *     - 游戏结束画面（角色揭晓 + 重开/回放/分析按钮）
+       *     - 警徽竞选报名
+       *     - 警长移交警徽 / 撕毁选项
+       *     - 行动确认面板（选中目标后的确认/取消）
+       *     - 女巫行动面板（救人/毒杀/跳过）
+       *     - 人类发言输入区（MentionInput + 发送 + 结束发言）
+       *     - AI 对话展示区（打字机效果 + 点击继续）
+       *     - 夜晚等待动画（AI 行动中的脉冲点）
+       * ===================================================================== */}
       <div className="wc-dialog-bottom mt-auto shrink-0 px-4 lg:px-6 pb-4 lg:pb-6 pt-0">
-        {/* 投票进度 */}
+        {/* 【投票进度】白天投票或警徽选举阶段显示实时投票进度 */}
         {(gameState.phase === "DAY_VOTE" || gameState.phase === "DAY_BADGE_ELECTION") && (
           <div className="mb-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg p-3">
             <div className="text-sm font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
@@ -1168,7 +1346,7 @@ export function DialogArea({
           </div>
         )}
 
-        {/* 狼人协作面板 */}
+        {/* 【狼人协作面板】夜晚狼人行动阶段，人类为狼人阵营时显示，用于狼人之间协商击杀目标 */}
         {gameState.phase === "NIGHT_WOLF_ACTION" && humanPlayer && isWolfRole(humanPlayer.role) && (
           <div className="mb-3">
             <WolfPlanningPanel gameState={gameState} humanPlayer={humanPlayer} />
@@ -1205,7 +1383,7 @@ export function DialogArea({
           )}
           {shouldShowDialogPanel && (
           <AnimatePresence mode="wait">
-              {/* 游戏结束 - 文字形式 */}
+              {/* 【游戏结束画面】显示胜负结果、角色揭晓、下载回放按钮和重新开始按钮 */}
               {showGameEnd && (
                 <motion.div
                   key="game-end"
@@ -1258,7 +1436,7 @@ export function DialogArea({
                 </motion.div>
               )}
 
-              {/* 警徽竞选报名 */}
+              {/* 【警徽竞选报名面板】询问人类玩家是否参与警长竞选，提供"参与"和"放弃"两个选项 */}
               {showBadgeSignup && (
                 <motion.div
                   key="badge-signup"
@@ -1289,7 +1467,7 @@ export function DialogArea({
                 </motion.div>
               )}
 
-              {/* Badge signup waiting hint */}
+              {/* 【警徽竞选等待提示】人类已报名，等待其他玩家报名中 */}
               {showBadgeSignupWaiting && (
                 <motion.div
                   key="badge-signup-waiting"
@@ -1303,7 +1481,7 @@ export function DialogArea({
                 </motion.div>
               )}
               
-              {/* 警长移交警徽 - 撕毁选项 */}
+              {/* 【警徽移交警徽面板】警长死亡时，选择是否撕毁警徽（不移交给其他人） */}
               {showBadgeTransferOption && (
                 <motion.div
                   key="badge-tear-option"
@@ -1368,7 +1546,8 @@ export function DialogArea({
                 return null;
               })()}
 
-              {/* 选择确认面板 - 文字形式 */}
+              {/* 【行动确认面板】当玩家选中目标座位后显示，根据当前阶段显示不同的行动描述
+                  （投票/查验/击杀/守护/射击/移交警徽/自爆），提供取消和确认按钮 */}
               {(() => {
                 if (!showActionConfirm || selectedSeat === null) return null;
 
@@ -1432,7 +1611,10 @@ export function DialogArea({
                 );
               })()}
 
-              {/* 女巫行动面板 - 文字形式 */}
+              {/* 【女巫行动面板】夜晚女巫行动阶段，人类为女巫时显示
+                  - 未选中目标时：显示"今晚被击杀的是X号"、救人按钮（如解药可用）、毒人提示、跳过按钮
+                  - 选中目标后：显示毒杀确认面板（确认/取消）
+                  - 解药/毒药已使用时显示相应禁用提示 */}
               {showWitchPanel && (
                 selectedSeat !== null ? (
                   <motion.div
@@ -1558,7 +1740,11 @@ export function DialogArea({
                 )
               )}
 
-              {/* 模式1: 人类发言输入 */}
+              {/* 【人类发言输入区】轮到人类玩家发言时显示
+                  - 白狼王自爆按钮（白狼王角色专用，发言阶段可触发自爆）
+                  - MentionInput 输入框（支持 @玩家 提及，支持语音录制）
+                  - 底部按钮栏：语音录制器、发送消息按钮、结束发言按钮
+                  - 结束发言按钮：发送当前输入内容并结束本回合发言 */}
               {showHumanInput && (
                 <motion.div
                   key="human-input"
@@ -1638,7 +1824,12 @@ export function DialogArea({
                 </motion.div>
               )}
 
-              {/* 模式2: AI/系统对话显示 */}
+              {/* 【AI 对话展示区】展示 AI 玩家或系统的对话内容
+                  - 顶部：发言者名称（移动端内联显示头像+名称，桌面端仅显示名称）
+                  - 中间：对话内容（流式打字机效果时用 renderStreamingMarkdown 渲染，
+                    静态时用 MentionsMarkdown 完整 Markdown 渲染，均支持 @玩家 标签高亮）
+                  - 底部信息栏：打字状态指示、猎人跳过射击按钮、"按 Enter 继续" 提示
+                  - 点击整个区域可触发 handleAdvance（停止语音 + 跳到下一句） */}
               {showDialogueBlock && (
                 <motion.div
                   key={`dialogue-${currentSpeaker?.player?.playerId || 'waiting'}-${gameState.currentSpeakerSeat ?? 'none'}`}
@@ -1748,7 +1939,9 @@ export function DialogArea({
                 </motion.div>
               )}
 
-              {/* 模式3: 夜晚等待状态 - 有趣动画 */}
+              {/* 【夜晚等待动画】当 AI 玩家正在执行夜晚行动（狼人/女巫/预言家/守卫）时显示
+                  使用 NightActionStatus 组件，带有神秘光球脉冲动画和角色图标。
+                  当人类玩家的行动阶段时不显示（由对应行动面板替代） */}
               {showNightWaiting && (
                 <motion.div
                   key="night-waiting"
@@ -1767,8 +1960,18 @@ export function DialogArea({
   );
 }
 
-// 聊天消息组件
-function ChatMessageItem({ 
+/**
+ * ChatMessageItem - 聊天消息条目组件
+ *
+ * 渲染单条聊天消息，根据消息类型分为三种展示模式：
+ * 1. 系统消息 - [ROLE_REVEAL] 前缀：渲染 RoleRevealHistoryCard（角色揭晓卡片）
+ * 2. 系统消息 - [VOTE_RESULT] 前缀：渲染 VoteResultCard（投票结果卡片）
+ * 3. 普通系统消息：居中显示，小字灰色
+ * 4. 玩家消息：带头像、玩家名称、对话内容（Markdown 渲染 + @玩家标签高亮）
+ *    - 人类玩家消息右对齐，AI 玩家消息左对齐
+ *    - 同一玩家连续发言不重复显示头像（通过 showDivider 控制）
+ */
+function ChatMessageItem({
   msg, 
   players, 
   humanPlayerId,

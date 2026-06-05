@@ -19,6 +19,7 @@ import {
 import { GAME_TEMPERATURE } from "./ai-config";
 import { sampleModelRefs, type GeneratedCharacter } from "./character-generator";
 import { aiLogger } from "./ai-logger";
+import { gameLogger } from "./game-logger";
 import { getGeneratorModel, getSummaryModel } from "@/lib/api-keys";
 import { PhaseManager } from "@/game/core/PhaseManager";
 import type { PromptResult } from "@/game/core/types";
@@ -420,6 +421,9 @@ export function addPlayerMessage(
 }
 
 export function transitionPhase(state: GameState, newPhase: Phase): GameState {
+  // 记录阶段转换日志
+  gameLogger.phase(state.phase, newPhase, state.day);
+
   // Clear currentSpeakerSeat when transitioning to night phases
   const isNightPhase = newPhase.startsWith("NIGHT_");
   const shouldClearSpeaker = isNightPhase || newPhase === "DAY_VOTE" || newPhase === "DAY_RESOLVE";
