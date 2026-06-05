@@ -456,6 +456,13 @@
         "guard": "每晚可以守护一名玩家免受狼人袭击",
         "idiot": "被投票出局时翻牌免死，但失去投票权"
       }
+    },
+    "customRoleConfig": {
+      "title": "自定义角色配置",
+      "description": "自定义每种角色的数量，总数需等于当前人数",
+      "totalValid": "配置有效",
+      "totalInvalid": "总数需为 {target}，当前多出 {extra}",
+      "totalShort": "总数需为 {target}，还差 {missing}"
     }
   },
   "authModal": {

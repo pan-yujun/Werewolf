@@ -437,6 +437,13 @@
         "guard": "Protect one player from wolf attacks each night",
         "idiot": "Survives a vote-out by revealing role, but loses voting rights"
       }
+    },
+    "customRoleConfig": {
+      "title": "Custom Role Config",
+      "description": "Set the number of each role; total must equal the player count",
+      "totalValid": "Config is valid",
+      "totalInvalid": "Total must be {target}, currently {extra} over",
+      "totalShort": "Total must be {target}, {missing} more needed"
     }
   }
   ,

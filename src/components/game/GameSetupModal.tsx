@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { SoundSettingsSection } from "@/components/game/SettingsModal";
 import { useTranslations } from "next-intl";
 import type { Role } from "@/types/game";
+import type { CustomRoleConfig } from "@/store/settings";
 
 /** Return the unique roles present in the default configuration for a given player count. */
 function getAvailableRoles(playerCount: number): Role[] {
@@ -26,6 +27,18 @@ function getAvailableRoles(playerCount: number): Role[] {
   return configs[playerCount] ?? configs[10];
 }
 
+/** Build a default CustomRoleConfig matching the standard role distribution for a player count. */
+function getDefaultCustomRoleConfig(playerCount: number): CustomRoleConfig {
+  const defaults: Record<number, CustomRoleConfig> = {
+    8: { Werewolf: 3, Seer: 1, Witch: 1, Hunter: 1, Villager: 2 },
+    9: { Werewolf: 3, Seer: 1, Witch: 1, Hunter: 1, Villager: 3 },
+    10: { Werewolf: 2, WhiteWolfKing: 1, Seer: 1, Witch: 1, Hunter: 1, Guard: 1, Villager: 3 },
+    11: { Werewolf: 3, WhiteWolfKing: 1, Seer: 1, Witch: 1, Hunter: 1, Guard: 1, Idiot: 1, Villager: 2 },
+    12: { Werewolf: 3, WhiteWolfKing: 1, Seer: 1, Witch: 1, Hunter: 1, Guard: 1, Idiot: 1, Villager: 3 },
+  };
+  return defaults[playerCount] ?? defaults[10];
+}
+
 interface GameSetupModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -37,6 +50,10 @@ interface GameSetupModalProps {
   onGenshinModeChange: (value: boolean) => void;
   isSpectatorMode: boolean;
   onSpectatorModeChange: (value: boolean) => void;
+  customRoleConfigEnabled: boolean;
+  onCustomRoleConfigEnabledChange: (value: boolean) => void;
+  customRoleConfig: CustomRoleConfig;
+  onCustomRoleConfigChange: (value: CustomRoleConfig) => void;
   bgmVolume: number;
   isSoundEnabled: boolean;
   isAiVoiceEnabled: boolean;
@@ -59,6 +76,10 @@ export function GameSetupModal({
   onGenshinModeChange,
   isSpectatorMode,
   onSpectatorModeChange,
+  customRoleConfigEnabled,
+  onCustomRoleConfigEnabledChange,
+  customRoleConfig,
+  onCustomRoleConfigChange,
   bgmVolume,
   isSoundEnabled,
   isAiVoiceEnabled,
@@ -116,6 +137,28 @@ export function GameSetupModal({
       onPreferredRoleChange("");
     }
   }, [preferredRole, availableRoles, onPreferredRoleChange]);
+
+  // Sync custom role config when player count changes
+  useEffect(() => {
+    onCustomRoleConfigChange(getDefaultCustomRoleConfig(playerCount));
+  }, [playerCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Custom role config: compute total and validation
+  const customRoleTotal = useMemo(
+    () => Object.values(customRoleConfig).reduce((sum, n) => sum + (n ?? 0), 0),
+    [customRoleConfig]
+  );
+  const customRoleDiff = customRoleTotal - playerCount;
+
+  const handleRoleCountChange = useCallback(
+    (role: Role, delta: number) => {
+      onCustomRoleConfigChange({
+        ...customRoleConfig,
+        [role]: Math.max(0, (customRoleConfig[role] ?? 0) + delta),
+      });
+    },
+    [customRoleConfig, onCustomRoleConfigChange]
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -181,6 +224,66 @@ export function GameSetupModal({
               </div>
             </div>
           )}
+
+          {/* Custom Role Configuration */}
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-[var(--text-primary)]">{t("gameSetup.customRoleConfig.title")}</div>
+                <div className="text-xs text-[var(--text-muted)]">
+                  {t("gameSetup.customRoleConfig.description")}
+                </div>
+              </div>
+              <Switch className="shrink-0 mt-1" checked={customRoleConfigEnabled} onCheckedChange={onCustomRoleConfigEnabledChange} />
+            </div>
+
+            {customRoleConfigEnabled && (
+              <div className="space-y-2 rounded-lg border border-[var(--border-color)] p-3">
+                {availableRoles.map((role) => {
+                  const count = customRoleConfig[role] ?? 0;
+                  return (
+                    <div key={role} className="flex items-center justify-between">
+                      <span className="text-sm text-[var(--text-primary)]">{roleLabels[role]}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleRoleCountChange(role, -1)}
+                          disabled={count <= 0}
+                          className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border-color)] text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          −
+                        </button>
+                        <span className="w-6 text-center text-sm font-medium tabular-nums text-[var(--text-primary)]">{count}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRoleCountChange(role, 1)}
+                          disabled={customRoleTotal >= playerCount}
+                          className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border-color)] text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="border-t border-[var(--border-color)] pt-2 mt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-[var(--text-primary)]">
+                      {customRoleTotal} / {playerCount}
+                    </span>
+                    <span className={`text-xs ${customRoleDiff === 0 ? "text-green-500" : "text-red-400"}`}>
+                      {customRoleDiff === 0
+                        ? t("gameSetup.customRoleConfig.totalValid")
+                        : customRoleDiff > 0
+                          ? t("gameSetup.customRoleConfig.totalInvalid", { target: playerCount, extra: customRoleDiff })
+                          : t("gameSetup.customRoleConfig.totalShort", { target: playerCount, missing: -customRoleDiff })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">

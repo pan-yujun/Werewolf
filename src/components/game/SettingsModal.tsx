@@ -203,8 +203,8 @@ export function SettingsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[92vw] max-w-md max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="w-[92vw] max-w-md max-h-[85vh] flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
           <DialogTitle className="font-serif text-[var(--text-primary)]">
             {view === "about" ? t("settings.about.title") : view === "exitConfirm" ? t("settings.game.exitConfirmTitle") : t("settings.title")}
           </DialogTitle>
@@ -213,6 +213,7 @@ export function SettingsModal({
           </DialogDescription>
         </DialogHeader>
 
+        <div className="flex-1 overflow-y-auto px-6 pb-6">
         {view === "exitConfirm" ? (
           <div className="space-y-4">
             <div className="rounded-lg border-2 border-red-500/30 bg-red-500/10 p-4">
@@ -344,6 +345,7 @@ export function SettingsModal({
             )}
           </div>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   );

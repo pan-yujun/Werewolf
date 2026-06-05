@@ -104,3 +104,38 @@ export const difficultyAtom = atom(
     set(rawDifficultyAtom, normalizeDifficulty(next));
   }
 );
+
+// Custom role configuration
+export type CustomRoleConfig = Partial<Record<Role, number>>;
+
+export const customRoleConfigEnabledAtom = atomWithStorage<boolean>(
+  "wolfcha.settings.custom_role_config_enabled",
+  false
+);
+
+const DEFAULT_CUSTOM_ROLE_CONFIG: CustomRoleConfig = {};
+
+const normalizeCustomRoleConfig = (value: CustomRoleConfig): CustomRoleConfig => {
+  const result: CustomRoleConfig = {};
+  for (const role of ALL_ROLES) {
+    const count = value[role];
+    if (typeof count === "number" && count > 0) {
+      result[role] = Math.floor(count);
+    }
+  }
+  return result;
+};
+
+const rawCustomRoleConfigAtom = atomWithStorage<CustomRoleConfig>(
+  "wolfcha.settings.custom_role_config",
+  DEFAULT_CUSTOM_ROLE_CONFIG
+);
+
+export const customRoleConfigAtom = atom(
+  (get) => normalizeCustomRoleConfig(get(rawCustomRoleConfigAtom)),
+  (get, set, update: CustomRoleConfig | ((prev: CustomRoleConfig) => CustomRoleConfig)) => {
+    const prev = normalizeCustomRoleConfig(get(rawCustomRoleConfigAtom));
+    const next = typeof update === "function" ? update(prev) : update;
+    set(rawCustomRoleConfigAtom, normalizeCustomRoleConfig(next));
+  }
+);

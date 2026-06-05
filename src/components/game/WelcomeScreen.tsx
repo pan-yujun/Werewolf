@@ -26,7 +26,8 @@ import { LocaleSwitcher } from "@/components/game/LocaleSwitcher";
 import { CustomCharacterModal } from "@/components/game/CustomCharacterModal";
 import { useCustomCharacters } from "@/hooks/useCustomCharacters";
 import { useCredits } from "@/hooks/useCredits";
-import { difficultyAtom, playerCountAtom, preferredRoleAtom } from "@/store/settings";
+import { difficultyAtom, playerCountAtom, preferredRoleAtom, customRoleConfigEnabledAtom, customRoleConfigAtom } from "@/store/settings";
+import type { CustomRoleConfig } from "@/store/settings";
 import { hasDashscopeKey, hasMimoKey, hasModelscopeKey, hasZenmuxKey, isCustomKeyEnabled } from "@/lib/api-keys";
 import { useAppLocale } from "@/i18n/useAppLocale";
 import {
@@ -210,6 +211,17 @@ function getRoleCountConfig(playerCount: number) {
   };
 }
 
+/** Convert a CustomRoleConfig map to a flat Role[] array for fixedRoles. */
+function roleConfigToArray(config: CustomRoleConfig): Role[] {
+  const result: Role[] = [];
+  for (const [role, count] of Object.entries(config)) {
+    for (let i = 0; i < (count ?? 0); i++) {
+      result.push(role as Role);
+    }
+  }
+  return result;
+}
+
 interface WelcomeScreenProps {
   humanName: string;
   setHumanName: (name: string) => void;
@@ -385,6 +397,8 @@ export function WelcomeScreen({
   const [difficulty, setDifficulty] = useAtom(difficultyAtom);
   const [playerCount, setPlayerCount] = useAtom(playerCountAtom);
   const [preferredRole, setPreferredRole] = useAtom(preferredRoleAtom);
+  const [customRoleConfigEnabled, setCustomRoleConfigEnabled] = useAtom(customRoleConfigEnabledAtom);
+  const [customRoleConfig, setCustomRoleConfig] = useAtom(customRoleConfigAtom);
   const [githubStars, setGithubStars] = useState<number | null>(null);
   const springCampaignRemainingQuota = springCampaign?.remainingQuota ?? 0;
   const springCampaignTotalQuota = springCampaign?.totalQuota ?? 0;
@@ -553,9 +567,16 @@ export function WelcomeScreen({
     });
   }, [playerCount, t]);
 
+  const customRoleTotal = useMemo(
+    () => Object.values(customRoleConfig).reduce((sum, n) => sum + (n ?? 0), 0),
+    [customRoleConfig]
+  );
+
   const canConfirm = useMemo(() => {
-    return !!humanName.trim() && !isLoading && !isTransitioning && !creditsLoading;
-  }, [humanName, isLoading, isTransitioning, creditsLoading]);
+    if (!humanName.trim() || isLoading || isTransitioning || creditsLoading) return false;
+    if (customRoleConfigEnabled && customRoleTotal !== playerCount) return false;
+    return true;
+  }, [humanName, isLoading, isTransitioning, creditsLoading, customRoleConfigEnabled, customRoleTotal, playerCount]);
 
   const isAnyModalOpen =
     isSetupOpen ||
@@ -716,6 +737,11 @@ export function WelcomeScreen({
       const roles = devTab === "roles" && devRoleOverrideEnabled && roleConfigValid ? (fixedRoles as Role[]) : undefined;
       const preset = devTab === "preset" && devPreset ? (devPreset as DevPreset) : undefined;
 
+      // Use custom role config if enabled and valid
+      const customRoles = customRoleConfigEnabled
+        ? roleConfigToArray(customRoleConfig)
+        : undefined;
+
       // Get selected custom characters
       const selectedCustomChars = customCharacters.characters
         .filter(c => selectedCharacterIds.has(c.id))
@@ -732,7 +758,7 @@ export function WelcomeScreen({
         }));
 
       void onStart({
-        fixedRoles: roles,
+        fixedRoles: customRoles ?? roles,
         devPreset: preset,
         difficulty,
         playerCount,
@@ -776,6 +802,11 @@ export function WelcomeScreen({
       const roles = devTab === "roles" && devRoleOverrideEnabled && roleConfigValid ? (fixedRoles as Role[]) : undefined;
       const preset = devTab === "preset" && devPreset ? (devPreset as DevPreset) : undefined;
 
+      // Use custom role config if enabled and valid
+      const customRoles = customRoleConfigEnabled
+        ? roleConfigToArray(customRoleConfig)
+        : undefined;
+
       const selectedCustomChars = customCharacters.characters
         .filter(c => selectedCharacterIds.has(c.id))
         .map(c => ({
@@ -791,7 +822,7 @@ export function WelcomeScreen({
         }));
 
       void onStart({
-        fixedRoles: roles,
+        fixedRoles: customRoles ?? roles,
         devPreset: preset,
         difficulty,
         playerCount,
@@ -858,6 +889,10 @@ export function WelcomeScreen({
           onGenshinModeChange={onGenshinModeChange}
           isSpectatorMode={isSpectatorMode}
           onSpectatorModeChange={onSpectatorModeChange}
+          customRoleConfigEnabled={customRoleConfigEnabled}
+          onCustomRoleConfigEnabledChange={setCustomRoleConfigEnabled}
+          customRoleConfig={customRoleConfig}
+          onCustomRoleConfigChange={setCustomRoleConfig}
           bgmVolume={bgmVolume}
           isSoundEnabled={isSoundEnabled}
           isAiVoiceEnabled={isAiVoiceEnabled}
