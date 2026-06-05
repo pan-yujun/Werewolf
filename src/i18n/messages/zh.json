@@ -256,6 +256,12 @@
     "countLabel": "{count}人",
     "footer": "仅调整人数与职位配置，玩法流程保持一致。",
     "options": {
+      "6": {
+        "title": "6人局",
+        "subtitle": "快速对局",
+        "description": "2狼 2神 2民",
+        "roles": "神职：预言家、守卫"
+      },
       "8": {
         "title": "8人局",
         "subtitle": "紧凑对局",
@@ -285,6 +291,12 @@
         "subtitle": "经典满配",
         "description": "3狼+白狼王 5神 3民",
         "roles": "神职：预言家、女巫、猎人、守卫、白痴"
+      },
+      "12noGuard": {
+        "title": "12人局(无守卫)",
+        "subtitle": "纯对抗",
+        "description": "4狼 4神 4民",
+        "roles": "神职：预言家、女巫、猎人、白痴"
       }
     }
   },
@@ -407,6 +419,11 @@
       "hardDesc": "深度对抗，推理更复杂"
     },
     "playerCount": {
+      "6": {
+        "title": "6人局",
+        "description": "2狼 2神 2民",
+        "roles": "神职：预言家、守卫"
+      },
       "8": {
         "title": "8人局",
         "description": "3狼 3神 2民",
@@ -431,6 +448,11 @@
         "title": "12人局",
         "description": "3狼+白狼王 5神 3民",
         "roles": "神职：预言家、女巫、猎人、守卫、白痴"
+      },
+      "12noGuard": {
+        "title": "12人局(无守卫)",
+        "description": "4狼 4神 4民",
+        "roles": "神职：预言家、女巫、猎人、白痴"
       }
     },
     "genshinMode": {

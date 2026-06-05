@@ -27,7 +27,15 @@ export function PlayerCountSelector({
   onChange,
 }: PlayerCountSelectorProps) {
   const t = useTranslations();
+  // 人数选项列表：6-12 人（卡片式选择器，不含 12 人无守卫变体）
   const options = useMemo<PlayerCountOption[]>(() => ([
+    {
+      count: 6,
+      title: t("playerCount.options.6.title"),
+      subtitle: t("playerCount.options.6.subtitle"),
+      description: t("playerCount.options.6.description"),
+      roles: t("playerCount.options.6.roles"),
+    },
     {
       count: 8,
       title: t("playerCount.options.8.title"),

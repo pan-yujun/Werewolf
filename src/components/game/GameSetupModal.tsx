@@ -12,12 +12,13 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { SoundSettingsSection } from "@/components/game/SettingsModal";
 import { useTranslations } from "next-intl";
-import type { Role } from "@/types/game";
+import type { Role, ConfigPreset } from "@/types/game";
 import type { CustomRoleConfig } from "@/store/settings";
 
-/** Return the unique roles present in the default configuration for a given player count. */
+/** 返回指定人数下可用的角色种类（去重后），用于角色偏好下拉框和自定义角色配置面板 */
 function getAvailableRoles(playerCount: number): Role[] {
   const configs: Record<number, Role[]> = {
+    6: ["Werewolf", "Seer", "Guard", "Villager"],
     8: ["Werewolf", "Seer", "Witch", "Hunter", "Villager"],
     9: ["Werewolf", "Seer", "Witch", "Hunter", "Villager"],
     10: ["Werewolf", "WhiteWolfKing", "Seer", "Witch", "Hunter", "Guard", "Villager"],
@@ -27,9 +28,18 @@ function getAvailableRoles(playerCount: number): Role[] {
   return configs[playerCount] ?? configs[10];
 }
 
-/** Build a default CustomRoleConfig matching the standard role distribution for a player count. */
-function getDefaultCustomRoleConfig(playerCount: number): CustomRoleConfig {
+/**
+ * 根据人数和配置预设生成自定义角色配置面板的默认数量值。
+ * 12人局无守卫配置走独立分支，其余走标准配置表。
+ */
+function getDefaultCustomRoleConfig(playerCount: number, configPreset: ConfigPreset = "standard"): CustomRoleConfig {
+  // 12人局无守卫配置：4狼+4神+4民
+  if (playerCount === 12 && configPreset === "noGuard") {
+    return { Werewolf: 4, Seer: 1, Witch: 1, Hunter: 1, Idiot: 1, Villager: 4 };
+  }
+  // 标准配置：人数 → 各角色数量
   const defaults: Record<number, CustomRoleConfig> = {
+    6: { Werewolf: 2, Seer: 1, Guard: 1, Villager: 2 },
     8: { Werewolf: 3, Seer: 1, Witch: 1, Hunter: 1, Villager: 2 },
     9: { Werewolf: 3, Seer: 1, Witch: 1, Hunter: 1, Villager: 3 },
     10: { Werewolf: 2, WhiteWolfKing: 1, Seer: 1, Witch: 1, Hunter: 1, Guard: 1, Villager: 3 },
@@ -44,6 +54,8 @@ interface GameSetupModalProps {
   onOpenChange: (open: boolean) => void;
   playerCount: number;
   onPlayerCountChange: (value: number) => void;
+  configPreset: ConfigPreset;
+  onConfigPresetChange: (value: ConfigPreset) => void;
   preferredRole: Role | "";
   onPreferredRoleChange: (value: Role | "") => void;
   isGenshinMode: boolean;
@@ -70,6 +82,8 @@ export function GameSetupModal({
   onOpenChange,
   playerCount,
   onPlayerCountChange,
+  configPreset,
+  onConfigPresetChange,
   preferredRole,
   onPreferredRoleChange,
   isGenshinMode,
@@ -91,13 +105,30 @@ export function GameSetupModal({
 }: GameSetupModalProps) {
   const t = useTranslations();
 
+  // 人数选项列表：6-12人，12人有两种配置方案（标准/无守卫）
   const PLAYER_COUNT_OPTIONS = [
-    { value: 8, label: t("gameSetup.playerCount.8.title"), description: t("gameSetup.playerCount.8.description"), roles: t("gameSetup.playerCount.8.roles") },
-    { value: 9, label: t("gameSetup.playerCount.9.title"), description: t("gameSetup.playerCount.9.description"), roles: t("gameSetup.playerCount.9.roles") },
-    { value: 10, label: t("gameSetup.playerCount.10.title"), description: t("gameSetup.playerCount.10.description"), roles: t("gameSetup.playerCount.10.roles") },
-    { value: 11, label: t("gameSetup.playerCount.11.title"), description: t("gameSetup.playerCount.11.description"), roles: t("gameSetup.playerCount.11.roles") },
-    { value: 12, label: t("gameSetup.playerCount.12.title"), description: t("gameSetup.playerCount.12.description"), roles: t("gameSetup.playerCount.12.roles") },
+    { value: "6", label: t("gameSetup.playerCount.6.title"), description: t("gameSetup.playerCount.6.description"), roles: t("gameSetup.playerCount.6.roles") },
+    { value: "8", label: t("gameSetup.playerCount.8.title"), description: t("gameSetup.playerCount.8.description"), roles: t("gameSetup.playerCount.8.roles") },
+    { value: "9", label: t("gameSetup.playerCount.9.title"), description: t("gameSetup.playerCount.9.description"), roles: t("gameSetup.playerCount.9.roles") },
+    { value: "10", label: t("gameSetup.playerCount.10.title"), description: t("gameSetup.playerCount.10.description"), roles: t("gameSetup.playerCount.10.roles") },
+    { value: "11", label: t("gameSetup.playerCount.11.title"), description: t("gameSetup.playerCount.11.description"), roles: t("gameSetup.playerCount.11.roles") },
+    { value: "12", label: t("gameSetup.playerCount.12.title"), description: t("gameSetup.playerCount.12.description"), roles: t("gameSetup.playerCount.12.roles") },
+    { value: "12-noGuard", label: t("gameSetup.playerCount.12noGuard.title"), description: t("gameSetup.playerCount.12noGuard.description"), roles: t("gameSetup.playerCount.12noGuard.roles") },
   ];
+
+  // 根据 playerCount + configPreset 推导下拉框当前选中值
+  const selectValue = playerCount === 12 && configPreset === "noGuard" ? "12-noGuard" : String(playerCount);
+
+  /** 处理人数选择变更：解析选项值，同步更新 playerCount 和 configPreset */
+  const handlePlayerCountSelect = (val: string) => {
+    if (val === "12-noGuard") {
+      onPlayerCountChange(12);
+      onConfigPresetChange("noGuard");
+    } else {
+      onPlayerCountChange(Number(val));
+      onConfigPresetChange("standard");
+    }
+  };
 
   const roleLabels = useMemo<Record<Role, string>>(
     () => ({
@@ -174,8 +205,8 @@ export function GameSetupModal({
           <div className="space-y-2">
             <div className="text-sm font-medium text-[var(--text-primary)]">{t("gameSetup.playerCountLabel")}</div>
             <Select
-              value={String(playerCount)}
-              onValueChange={(value) => onPlayerCountChange(Number(value))}
+              value={selectValue}
+              onValueChange={handlePlayerCountSelect}
             >
               <SelectTrigger>
                 <SelectValue placeholder={t("gameSetup.selectPlayerCount")} />

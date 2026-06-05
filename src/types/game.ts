@@ -24,15 +24,20 @@ export interface CustomCharacterData {
   modelRef?: ModelRef;
 }
 
+/** 配置预设：用于区分同人数的不同角色配置方案 */
+export type ConfigPreset = "standard" | "noGuard";
+
+/** 开始游戏时传递的配置选项 */
 export interface StartGameOptions {
-  fixedRoles?: Role[];
-  devPreset?: DevPreset;
-  difficulty?: DifficultyLevel;
-  playerCount?: number;
-  isGenshinMode?: boolean;
-  isSpectatorMode?: boolean;
-  customCharacters?: CustomCharacterData[];
-  preferredRole?: Role;
+  fixedRoles?: Role[];          // 自定义角色分配数组（开发模式或自定义角色配置时使用）
+  devPreset?: DevPreset;        // 开发预设（跳转到特定阶段）
+  difficulty?: DifficultyLevel;  // 难度等级
+  playerCount?: number;         // 游戏人数
+  configPreset?: ConfigPreset;  // 配置预设（区分同人数的不同角色方案）
+  isGenshinMode?: boolean;      // 是否启用原神模式
+  isSpectatorMode?: boolean;    // 是否启用观战模式
+  customCharacters?: CustomCharacterData[];  // 自定义角色列表
+  preferredRole?: Role;         // 玩家偏好角色
 }
 
 export type Phase =

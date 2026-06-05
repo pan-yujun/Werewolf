@@ -256,6 +256,12 @@
     "countLabel": "{count} players",
     "footer": "Only player count and roles change; gameplay flow stays the same.",
     "options": {
+      "6": {
+        "title": "6 players",
+        "subtitle": "Quick match",
+        "description": "2 wolves, 2 specials, 2 villagers",
+        "roles": "Special roles: Seer, Guard"
+      },
       "8": {
         "title": "8 players",
         "subtitle": "Compact match",
@@ -285,6 +291,12 @@
         "subtitle": "Full classic",
         "description": "3 wolves + WWK, 5 specials, 3 villagers",
         "roles": "Special roles: Seer, Witch, Hunter, Guard, Idiot"
+      },
+      "12noGuard": {
+        "title": "12 players (No Guard)",
+        "subtitle": "Pure showdown",
+        "description": "4 wolves, 4 specials, 4 villagers",
+        "roles": "Special roles: Seer, Witch, Hunter, Idiot"
       }
     }
   },
@@ -408,11 +420,13 @@
       "hardDesc": "Deep confrontation, more complex reasoning"
     },
     "playerCount": {
+      "6": { "title": "6 players", "description": "2 wolves, 2 gods, 2 villagers", "roles": "Gods: Seer, Guard" },
       "8": { "title": "8 players", "description": "3 wolves, 3 gods, 2 villagers", "roles": "Gods: Seer, Witch, Hunter" },
       "9": { "title": "9 players", "description": "3 wolves, 3 gods, 3 villagers", "roles": "Gods: Seer, Witch, Hunter" },
       "10": { "title": "10 players", "description": "2 wolves + WWK, 4 gods, 3 villagers", "roles": "Gods: Seer, Witch, Hunter, Guard" },
       "11": { "title": "11 players", "description": "3 wolves + WWK, 5 gods, 2 villagers", "roles": "Gods: Seer, Witch, Hunter, Guard, Idiot" },
-      "12": { "title": "12 players", "description": "3 wolves + WWK, 5 gods, 3 villagers", "roles": "Gods: Seer, Witch, Hunter, Guard, Idiot" }
+      "12": { "title": "12 players", "description": "3 wolves + WWK, 5 gods, 3 villagers", "roles": "Gods: Seer, Witch, Hunter, Guard, Idiot" },
+      "12noGuard": { "title": "12 players (No Guard)", "description": "4 wolves, 4 gods, 4 villagers", "roles": "Gods: Seer, Witch, Hunter, Idiot" }
     },
     "genshinMode": {
       "title": "Model original mode",

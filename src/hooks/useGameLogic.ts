@@ -1381,16 +1381,18 @@ export function useGameLogic() {
   }, [gameState.devPhaseJump, getToken, runNightPhaseAction, resolveNight, startDayPhaseInternal, enterVotePhase, startLastWordsPhase, resolveVotePhase, proceedToNight, setGameState]);
 
   /** 开始游戏 */
+  /** 开始游戏：解析配置选项，生成角色并初始化游戏状态 */
   const startGame = useCallback(async (options?: Partial<StartGameOptions>) => {
     const {
-      fixedRoles,
-      devPreset,
-      difficulty = "normal",
-      playerCount = 10,
-      isGenshinMode = false,
-      isSpectatorMode = false,
-      customCharacters = [],
-      preferredRole,
+      fixedRoles,                      // 自定义角色分配（开发模式或自定义配置时使用）
+      devPreset,                       // 开发预设（跳转到特定阶段）
+      difficulty = "normal",           // 难度等级
+      playerCount = 10,                // 游戏人数
+      configPreset = "standard",       // 配置预设（standard/noGuard），用于区分同人数的不同角色方案
+      isGenshinMode = false,           // 是否启用原神模式
+      isSpectatorMode = false,         // 是否启用观战模式
+      customCharacters = [],           // 自定义角色列表
+      preferredRole,                   // 玩家偏好角色
     } = options ?? {};
 
     const totalPlayers = playerCount;
@@ -1659,9 +1661,11 @@ export function useGameLogic() {
 
       setLoadingProgress({ percent: 85, stage: "roles" });
       // Merge custom model refs into aiModelRefs so setupPlayers uses them
+      // 合并自定义模型引用到 AI 模型列表
       const mergedModelRefs = isGenshinMode
         ? genshinModelRefs!
         : aiModelRefs.map((ref, i) => customModelRefs[i] ?? ref);
+      // 初始化玩家：分配角色、模型、人设，configPreset 决定使用哪种角色配置方案
       const players = setupPlayers(
         characters,
         humanSeat,
@@ -1671,7 +1675,8 @@ export function useGameLogic() {
         seedPlayerIds,
         mergedModelRefs,
         aiSeatOrder,
-        preferredRole
+        preferredRole,
+        configPreset
       );
 
       let newState: GameState = {

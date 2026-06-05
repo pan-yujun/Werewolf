@@ -26,8 +26,9 @@ import { LocaleSwitcher } from "@/components/game/LocaleSwitcher";
 import { CustomCharacterModal } from "@/components/game/CustomCharacterModal";
 import { useCustomCharacters } from "@/hooks/useCustomCharacters";
 import { useCredits } from "@/hooks/useCredits";
-import { difficultyAtom, playerCountAtom, preferredRoleAtom, customRoleConfigEnabledAtom, customRoleConfigAtom } from "@/store/settings";
+import { difficultyAtom, playerCountAtom, preferredRoleAtom, customRoleConfigEnabledAtom, customRoleConfigAtom, configPresetAtom } from "@/store/settings";
 import type { CustomRoleConfig } from "@/store/settings";
+import type { ConfigPreset } from "@/types/game";
 import { hasDashscopeKey, hasMimoKey, hasModelscopeKey, hasZenmuxKey, isCustomKeyEnabled } from "@/lib/api-keys";
 import { useAppLocale } from "@/i18n/useAppLocale";
 import {
@@ -125,8 +126,14 @@ function SponsorCard({
   );
 }
 
+/**
+ * 根据人数构建默认角色数组（用于 Dev 模式角色覆盖的初始值）。
+ * 与 game-master.ts 中的 getRoleConfiguration 标准配置保持一致。
+ */
 function buildDefaultRoles(playerCount: number): Role[] {
   switch (playerCount) {
+    case 6:  // 6人：2狼+预言家+守卫+2民
+      return ["Werewolf", "Werewolf", "Seer", "Guard", "Villager", "Villager"];
     case 8:
       return ["Werewolf", "Werewolf", "Werewolf", "Seer", "Witch", "Hunter", "Villager", "Villager"];
     case 9:
@@ -187,17 +194,21 @@ function buildDefaultRoles(playerCount: number): Role[] {
   }
 }
 
+/**
+ * 根据人数计算各角色的预期数量（用于 Dev 模式验证和提示文本）。
+ * 规则：6人局有守卫无白狼王；8-9人无白狼王无守卫；10人起有白狼王和守卫；11人起加白痴和第3狼。
+ */
 function getRoleCountConfig(playerCount: number) {
-  const werewolfCount = playerCount >= 11 ? 3 : 2;
-  const whiteWolfKingCount = 1;
-  const wolfCount = werewolfCount + whiteWolfKingCount;
-  const guardCount = playerCount >= 10 ? 1 : 0;
-  const idiotCount = playerCount >= 11 ? 1 : 0;
-  const seerCount = 1;
-  const witchCount = 1;
-  const hunterCount = 1;
-  const godCount = seerCount + witchCount + hunterCount + guardCount + idiotCount;
-  const villagerCount = Math.max(0, playerCount - wolfCount - godCount);
+  const werewolfCount = playerCount >= 11 ? 3 : 2;           // 11人及以上3狼，否则2狼
+  const whiteWolfKingCount = playerCount >= 10 ? 1 : 0;      // 10人及以上有白狼王
+  const wolfCount = werewolfCount + whiteWolfKingCount;       // 狼人阵营总数
+  const guardCount = playerCount === 6 || playerCount >= 10 ? 1 : 0;  // 6人局和10人及以上有守卫
+  const idiotCount = playerCount >= 11 ? 1 : 0;              // 11人及以上有白痴
+  const seerCount = 1;    // 预言家固定1个
+  const witchCount = 1;   // 女巫固定1个
+  const hunterCount = 1;  // 猎人固定1个
+  const godCount = seerCount + witchCount + hunterCount + guardCount + idiotCount;  // 神职总数
+  const villagerCount = Math.max(0, playerCount - wolfCount - godCount);            // 村民 = 总人数 - 狼 - 神
   return {
     werewolfCount,
     whiteWolfKingCount,
@@ -211,7 +222,7 @@ function getRoleCountConfig(playerCount: number) {
   };
 }
 
-/** Convert a CustomRoleConfig map to a flat Role[] array for fixedRoles. */
+/** 将自定义角色配置（Record<Role, number>）展平为 Role[] 数组，用于传入 fixedRoles */
 function roleConfigToArray(config: CustomRoleConfig): Role[] {
   const result: Role[] = [];
   for (const [role, count] of Object.entries(config)) {
@@ -397,8 +408,9 @@ export function WelcomeScreen({
   const [difficulty, setDifficulty] = useAtom(difficultyAtom);
   const [playerCount, setPlayerCount] = useAtom(playerCountAtom);
   const [preferredRole, setPreferredRole] = useAtom(preferredRoleAtom);
-  const [customRoleConfigEnabled, setCustomRoleConfigEnabled] = useAtom(customRoleConfigEnabledAtom);
-  const [customRoleConfig, setCustomRoleConfig] = useAtom(customRoleConfigAtom);
+  const [customRoleConfigEnabled, setCustomRoleConfigEnabled] = useAtom(customRoleConfigEnabledAtom);  // 自定义角色配置开关
+  const [customRoleConfig, setCustomRoleConfig] = useAtom(customRoleConfigAtom);                        // 自定义角色数量配置
+  const [configPreset, setConfigPreset] = useAtom(configPresetAtom);                                    // 配置预设（standard/noGuard）
   const [githubStars, setGithubStars] = useState<number | null>(null);
   const springCampaignRemainingQuota = springCampaign?.remainingQuota ?? 0;
   const springCampaignTotalQuota = springCampaign?.totalQuota ?? 0;
@@ -567,11 +579,13 @@ export function WelcomeScreen({
     });
   }, [playerCount, t]);
 
+  // 自定义角色配置的总数量（用于验证是否等于玩家人数）
   const customRoleTotal = useMemo(
     () => Object.values(customRoleConfig).reduce((sum, n) => sum + (n ?? 0), 0),
     [customRoleConfig]
   );
 
+  // 确认按钮可用条件：昵称非空 + 未加载中 + 自定义配置总数等于人数
   const canConfirm = useMemo(() => {
     if (!humanName.trim() || isLoading || isTransitioning || creditsLoading) return false;
     if (customRoleConfigEnabled && customRoleTotal !== playerCount) return false;
@@ -737,7 +751,7 @@ export function WelcomeScreen({
       const roles = devTab === "roles" && devRoleOverrideEnabled && roleConfigValid ? (fixedRoles as Role[]) : undefined;
       const preset = devTab === "preset" && devPreset ? (devPreset as DevPreset) : undefined;
 
-      // Use custom role config if enabled and valid
+      // 若自定义角色配置开启，将其转换为 Role[] 数组作为 fixedRoles
       const customRoles = customRoleConfigEnabled
         ? roleConfigToArray(customRoleConfig)
         : undefined;
@@ -762,6 +776,7 @@ export function WelcomeScreen({
         devPreset: preset,
         difficulty,
         playerCount,
+        configPreset,
         customCharacters: selectedCustomChars,
         preferredRole: preferredRole || undefined,
       });
@@ -802,7 +817,7 @@ export function WelcomeScreen({
       const roles = devTab === "roles" && devRoleOverrideEnabled && roleConfigValid ? (fixedRoles as Role[]) : undefined;
       const preset = devTab === "preset" && devPreset ? (devPreset as DevPreset) : undefined;
 
-      // Use custom role config if enabled and valid
+      // 若自定义角色配置开启，将其转换为 Role[] 数组作为 fixedRoles
       const customRoles = customRoleConfigEnabled
         ? roleConfigToArray(customRoleConfig)
         : undefined;
@@ -826,6 +841,7 @@ export function WelcomeScreen({
         devPreset: preset,
         difficulty,
         playerCount,
+        configPreset,
         customCharacters: selectedCustomChars,
         preferredRole: preferredRole || undefined,
       });
@@ -883,6 +899,8 @@ export function WelcomeScreen({
           onOpenChange={setIsSetupOpen}
           playerCount={playerCount}
           onPlayerCountChange={setPlayerCount}
+          configPreset={configPreset}
+          onConfigPresetChange={setConfigPreset}
           preferredRole={preferredRole}
           onPreferredRoleChange={setPreferredRole}
           isGenshinMode={isGenshinMode}

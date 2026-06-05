@@ -25,6 +25,7 @@ import type { PromptResult } from "@/game/core/types";
 import { buildCachedSystemMessageFromParts } from "./prompt-utils";
 import { parseLLMJson } from "./llm-json";
 import { getI18n } from "@/i18n/translator";
+import type { ConfigPreset } from "@/types/game";
 
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
@@ -184,55 +185,56 @@ export function createInitialGameState(): GameState {
   };
 }
 
-export function getRoleConfiguration(playerCount: number): Role[] {
+/**
+ * 根据游戏人数和配置预设获取角色分配数组。
+ * 标准配置（standard）：6-12 人各有固定角色分配；
+ * 无守卫配置（noGuard）：仅 12 人局可用，4狼+4神+4民，无白狼王和守卫。
+ */
+export function getRoleConfiguration(playerCount: number, configPreset: ConfigPreset = "standard"): Role[] {
+  // 标准配置：人数 → 角色数组
   const configs: Record<number, Role[]> = {
-    8: ["Werewolf", "Werewolf", "Werewolf", "Seer", "Witch", "Hunter", "Villager", "Villager"],
-    9: ["Werewolf", "Werewolf", "Werewolf", "Seer", "Witch", "Hunter", "Villager", "Villager", "Villager"],
+    6: ["Werewolf", "Werewolf", "Seer", "Guard", "Villager", "Villager"],  // 6人：2狼+预言家+守卫+2民
+    8: ["Werewolf", "Werewolf", "Werewolf", "Seer", "Witch", "Hunter", "Villager", "Villager"],  // 8人：3狼+3神+2民
+    9: ["Werewolf", "Werewolf", "Werewolf", "Seer", "Witch", "Hunter", "Villager", "Villager", "Villager"],  // 9人：3狼+3神+3民
     10: [
-      "Werewolf",
-      "Werewolf",
-      "WhiteWolfKing",
-      "Seer",
-      "Witch",
-      "Hunter",
-      "Guard",
-      "Villager",
-      "Villager",
-      "Villager",
+      "Werewolf", "Werewolf", "WhiteWolfKing",  // 10人：2狼+白狼王
+      "Seer", "Witch", "Hunter", "Guard",        // 4神：预言家、女巫、猎人、守卫
+      "Villager", "Villager", "Villager",        // 3民
     ],
     11: [
-      "Werewolf",
-      "Werewolf",
-      "Werewolf",
-      "WhiteWolfKing",
-      "Seer",
-      "Witch",
-      "Hunter",
-      "Guard",
-      "Idiot",
-      "Villager",
-      "Villager",
+      "Werewolf", "Werewolf", "Werewolf", "WhiteWolfKing",  // 11人：3狼+白狼王
+      "Seer", "Witch", "Hunter", "Guard", "Idiot",           // 5神：预言家、女巫、猎人、守卫、白痴
+      "Villager", "Villager",                                // 2民
     ],
     12: [
-      "Werewolf",
-      "Werewolf",
-      "Werewolf",
-      "WhiteWolfKing",
-      "Seer",
-      "Witch",
-      "Hunter",
-      "Guard",
-      "Idiot",
-      "Villager",
-      "Villager",
-      "Villager",
+      "Werewolf", "Werewolf", "Werewolf", "WhiteWolfKing",  // 12人标准：3狼+白狼王
+      "Seer", "Witch", "Hunter", "Guard", "Idiot",           // 5神：预言家、女巫、猎人、守卫、白痴
+      "Villager", "Villager", "Villager",                    // 3民
     ],
   };
 
+  // 12人局无守卫配置：4狼+4神+4民（无白狼王、无守卫）
+  const noGuard12: Role[] = [
+    "Werewolf", "Werewolf", "Werewolf", "Werewolf",  // 4狼
+    "Seer", "Witch", "Hunter", "Idiot",               // 4神：预言家、女巫、猎人、白痴
+    "Villager", "Villager", "Villager", "Villager",   // 4民
+  ];
+
+  // 12人局无守卫配置走独立分支
+  if (playerCount === 12 && configPreset === "noGuard") {
+    return noGuard12.slice();
+  }
+
+  // 标准配置：查表获取，未匹配时回退到 10 人配置
   const roles = configs[playerCount] ?? configs[10];
   return roles.slice();
 }
 
+/**
+ * 根据角色列表和配置初始化所有玩家。
+ * 若提供 fixedRoles 则直接使用，否则根据 playerCount + configPreset 获取默认角色分配；
+ * 若指定 preferredRole，会通过交换确保人类玩家获得该角色。
+ */
 export function setupPlayers(
   characters: GeneratedCharacter[],
   humanSeat: number = 0,
@@ -242,12 +244,13 @@ export function setupPlayers(
   seedPlayerIds?: string[],
   modelRefs?: ModelRef[],
   aiSeatOrder?: number[],
-  preferredRole?: Role
+  preferredRole?: Role,
+  configPreset: ConfigPreset = "standard"
 ): Player[] {
   const { t } = getI18n();
   const totalPlayers = playerCount;
   const fallbackHumanName = t("common.you");
-  const roles = getRoleConfiguration(totalPlayers);
+  const roles = getRoleConfiguration(totalPlayers, configPreset);
   const assignedRoles = fixedRoles && fixedRoles.length === totalPlayers ? fixedRoles : shuffleArray(roles);
 
   // If the user chose a preferred role (and no dev fixedRoles), swap to ensure the human gets it

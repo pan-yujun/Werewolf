@@ -1,6 +1,7 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import type { DifficultyLevel, Role } from "@/types/game";
+import type { DifficultyLevel, Role, ConfigPreset } from "@/types/game";
+export type { ConfigPreset } from "@/types/game";
 
 export interface AudioSettings {
   bgmVolume: number;
@@ -51,8 +52,9 @@ export const audioSettingsAtom = atom(
   }
 );
 
+// 游戏人数配置：默认 10 人，范围 6-12 人
 const DEFAULT_PLAYER_COUNT = 10;
-const MIN_PLAYER_COUNT = 8;
+const MIN_PLAYER_COUNT = 6;
 const MAX_PLAYER_COUNT = 12;
 
 const normalizePlayerCount = (value: number) => {
@@ -68,6 +70,27 @@ export const playerCountAtom = atom(
     const prev = normalizePlayerCount(get(rawPlayerCountAtom));
     const next = typeof update === "function" ? update(prev) : update;
     set(rawPlayerCountAtom, normalizePlayerCount(next));
+  }
+);
+
+// 配置预设：用于区分同人数的不同角色配置方案（目前仅 12 人局有两种）
+// "standard" = 标准配置（含白狼王+守卫），"noGuard" = 无守卫配置（4狼+4神+4民）
+const DEFAULT_CONFIG_PRESET: ConfigPreset = "standard";
+const CONFIG_PRESET_OPTIONS: ConfigPreset[] = ["standard", "noGuard"];
+
+/** 校验配置预设值是否合法，非法值回退到默认值 */
+const normalizeConfigPreset = (value: ConfigPreset) =>
+  CONFIG_PRESET_OPTIONS.includes(value) ? value : DEFAULT_CONFIG_PRESET;
+
+const rawConfigPresetAtom = atomWithStorage<ConfigPreset>("wolfcha.settings.config_preset", DEFAULT_CONFIG_PRESET);
+
+/** 配置预设 atom，持久化到 localStorage，用于 12 人局的角色配置方案切换 */
+export const configPresetAtom = atom(
+  (get) => normalizeConfigPreset(get(rawConfigPresetAtom)),
+  (get, set, update: ConfigPreset | ((prev: ConfigPreset) => ConfigPreset)) => {
+    const prev = normalizeConfigPreset(get(rawConfigPresetAtom));
+    const next = typeof update === "function" ? update(prev) : update;
+    set(rawConfigPresetAtom, normalizeConfigPreset(next));
   }
 );
 
