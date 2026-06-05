@@ -66,6 +66,9 @@ import { cn } from "@/lib/utils";
 import { audioManager } from "@/lib/audio-manager";
 import { getLocale } from "@/i18n/locale-store";
 import { useTranslations } from "next-intl";
+// 游戏日志单例及日志条目类型，用于游戏结束时下载日志功能
+// gameLogger 是全局唯一的日志记录器，存储了本局游戏的所有流程日志
+import { gameLogger, type LogEntry } from "@/lib/game-logger";
 
 /**
  * 女巫行动类型
@@ -77,6 +80,120 @@ type WitchActionType = "save" | "poison" | "pass";
 import type { DialogueState } from "@/store/game-machine";
 
 const HISTORY_BOTTOM_THRESHOLD = 24;
+
+/* =====================================================================
+ * 日志下载工具函数
+ *
+ * 提供将游戏日志导出为格式化文本文件的功能。
+ * 游戏结束时，玩家可点击"下载日志"按钮，将本局游戏的完整流程日志
+ * 下载到本地，用于复盘分析或分享。
+ *
+ * 导出格式：
+ * - 文件头：Unicode 装饰框包裹的标题
+ * - 元信息：导出时间、日志总条数
+ * - 日志正文：每条格式为 [HH:MM:SS] emoji 消息内容
+ * - 分隔线条目（章节标题）不加缩进，普通条目加两格缩进
+ * ===================================================================== */
+
+/**
+ * 将时间戳（毫秒）格式化为 HH:MM:SS 格式的时间字符串
+ *
+ * @param ts - Unix 时间戳（毫秒），来自 LogEntry.timestamp
+ * @returns 格式化后的时间字符串，如 "14:05:09"
+ *
+ * @example
+ * formatLogTimestamp(1717651509000) // "14:05:09"
+ */
+function formatLogTimestamp(ts: number): string {
+  const d = new Date(ts);
+  const h = d.getHours().toString().padStart(2, "0");
+  const m = d.getMinutes().toString().padStart(2, "0");
+  const s = d.getSeconds().toString().padStart(2, "0");
+  return `${h}:${m}:${s}`;
+}
+
+/**
+ * 判断日志条目是否为分隔线（章节标题）
+ *
+ * 游戏日志中使用 "════" 开头的 Unicode 粗横线字符作为阶段分隔标记，
+ * 例如 "════ 夜晚 第1天 ════" 表示夜晚阶段的开始。
+ * 分隔线在导出时不加缩进前缀，普通日志条目则加两格缩进。
+ *
+ * @param entry - 日志条目对象
+ * @returns 如果是以 "════" 开头的分隔线则返回 true
+ *
+ * @example
+ * isLogSeparator({ message: "════ 夜晚 第1天 ════", ... }) // true
+ * isLogSeparator({ message: "狼人选择击杀 3 号玩家", ... }) // false
+ */
+function isLogSeparator(entry: LogEntry): boolean {
+  return entry.message.startsWith("════");
+}
+
+/**
+ * 将游戏日志导出为纯文本文件并触发浏览器下载
+ *
+ * 导出流程：
+ * 1. 构建格式化的文本内容（标题框 + 元信息 + 日志正文）
+ * 2. 创建 Blob 对象（UTF-8 编码的纯文本）
+ * 3. 通过动态创建 <a> 标签触发浏览器下载
+ * 4. 清理 DOM 和 Object URL 释放内存
+ *
+ * 文件命名规则：wolfcha-log-{YYYY-MM-DD-HH-mm-ss}.txt
+ * 示例：wolfcha-log-2026-06-06-14-05-09.txt
+ *
+ * @param logs - 待导出的 LogEntry 数组，来自 gameLogger.getLogs()
+ *
+ * @example
+ * const logs = gameLogger.getLogs();
+ * downloadGameLog(logs); // 触发下载 wolfcha-log-xxxx.txt
+ */
+function downloadGameLog(logs: LogEntry[]) {
+  // 构建文本内容：文件头标题框
+  const lines = [
+    "╔══════════════════════════════════════╗",
+    "║        狼人杀 · 游戏日志             ║",
+    "╚══════════════════════════════════════╝",
+    "",
+    // 元信息：导出时间和日志条数
+    `导出时间: ${new Date().toLocaleString("zh-CN")}`,
+    `日志条数: ${logs.length}`,
+    "",
+    // 分隔线：区分文件头和日志正文
+    "────────────────────────────────────────",
+    "",
+  ];
+
+  // 遍历日志条目，格式化为可读文本
+  for (const entry of logs) {
+    const time = formatLogTimestamp(entry.timestamp);
+    // 分隔线条目（章节标题）不加缩进，普通条目加两格缩进
+    const prefix = isLogSeparator(entry) ? "" : `  `;
+    lines.push(`[${time}] ${prefix}${entry.emoji} ${entry.message}`);
+  }
+
+  // 文件尾：结束标记
+  lines.push("");
+  lines.push("────────────────────────────────────────");
+  lines.push("日志结束");
+
+  // 创建 Blob 并触发下载
+  // 使用 UTF-8 编码确保中文字符正确显示
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  // 动态创建 <a> 标签模拟点击下载
+  const a = document.createElement("a");
+  a.href = url;
+  // 文件名格式：wolfcha-log-{时间戳}.txt
+  a.download = `wolfcha-log-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-")}.txt`;
+  document.body.appendChild(a);
+  a.click();
+
+  // 清理：移除临时 DOM 元素并释放 Object URL
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 /* =====================================================================
  * 职业立绘相关
@@ -1401,6 +1518,7 @@ export function DialogArea({
                   <div className={`flex items-center justify-between mt-4 pt-3 border-t ${isNight ? "border-white/10" : "border-black/5"}`}>
                     <span className="text-xs text-[var(--text-muted)]">{t("dialog.playAgainHint")}</span>
                     <div className="flex items-center gap-2">
+                      {/* 下载回放按钮：导出游戏回放 JSON 文件，用于后续回放观看 */}
                       {onDownloadReplay && (
                         <button
                           onClick={onDownloadReplay}
@@ -1411,6 +1529,24 @@ export function DialogArea({
                           {t("ui.downloadReplay")}
                         </button>
                       )}
+                      {/* 下载日志按钮：导出本局游戏的完整流程日志为 .txt 文件
+                          日志包含：游戏开始、阶段转换、玩家行动、投票结果等全流程记录
+                          点击时从 gameLogger 获取日志，调用 downloadGameLog 触发下载 */}
+                      <button
+                        onClick={() => {
+                          // 从全局日志记录器获取本局游戏的所有日志
+                          const logs = gameLogger.getLogs();
+                          // 仅在有日志时触发下载（防止空文件）
+                          if (logs.length > 0) {
+                            downloadGameLog(logs);
+                          }
+                        }}
+                        className="wc-action-btn text-sm h-9 px-4 flex items-center gap-2"
+                        type="button"
+                      >
+                        <Scroll size={14} weight="bold" />
+                        {t("ui.downloadLog")}
+                      </button>
                       {getLocale() === "zh" && (
                         <button
                           onClick={onViewAnalysis}

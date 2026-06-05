@@ -994,6 +994,7 @@
     "restart": "Play again",
     "viewAnalysis": "Analysis",
     "downloadReplay": "Replay",
+    "downloadLog": "Log",
     "speechOrder": "Players speak in order",
     "generatingVoice": "Generating voice",
     "seatNumber": "Seat {seat}",
