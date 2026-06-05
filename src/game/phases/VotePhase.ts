@@ -651,8 +651,9 @@ export class VotePhase extends GamePhase {
     }
 
     // === 胜负条件检查 ===
-    // 先将被处决者标记为死亡，再检查胜负条件
-    // （猎人路径已提前返回，此处只需处理非猎人角色）
+    // 必须在 checkWinCondition 之前调用 killPlayer 将被处决者标记为死亡（alive: false），
+    // 否则胜负判断时该玩家仍为存活状态，会导致本应结束的游戏继续进入遗言阶段。
+    // 猎人路径已在上方提前返回，此处只需处理非猎人角色。
     if (result) {
       currentState = killPlayer(currentState, result.seat);
       runtime.setGameState(currentState);
