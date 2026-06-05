@@ -262,6 +262,8 @@ export function useGameLogic() {
   const hasContinuedAfterRevealRef = useRef(false);              // 是否已经执行过 continueAfterRoleReveal（防重复）
   const isAwaitingRoleRevealRef = useRef(false);                 // 是否正在等待玩家确认角色揭示（阻塞夜晚流程）
   const showTableTimeoutRef = useRef<number | null>(null);       // 桌面显示的延迟定时器 ID
+  const lastGameOptionsRef = useRef<Partial<StartGameOptions> | null>(null);  // 上一局的游戏配置，用于"再来一局"时恢复
+  const autoRestartTimerRef = useRef<number | null>(null);       // 自动重启定时器 ID
 
   // --- 人类操作后继续流程的回调 refs ---
   // 当流程需要等待人类玩家输入时，将"下一步"逻辑暂存到 ref 中，
@@ -1762,6 +1764,9 @@ export function useGameLogic() {
       preferredRole,                   // 玩家偏好角色
     } = options ?? {};
 
+    // 保存本次游戏配置，供"再来一局"时复用
+    lastGameOptionsRef.current = options ?? {};
+
     const totalPlayers = playerCount;
 
     resetDialogueState();
@@ -2210,7 +2215,7 @@ export function useGameLogic() {
    * 6. 重置对话状态、输入框、桌面显示
    * 7. 清理所有 refs（回调、标记、定时器）
    */
-  const restartGame = useCallback(() => {
+  const restartGame = useCallback((autoRestart?: boolean) => {
     gameLogger.gameRestart();  // 记录游戏重启事件
     // 清空日志在 gameRestart 之后、重置状态之前，这样"游戏重启"这条日志也会被记录
     setTimeout(() => gameLogger.clearLogs(), 100);  // 延迟清空，确保重启日志被写入
@@ -2252,7 +2257,22 @@ export function useGameLogic() {
       window.clearTimeout(showTableTimeoutRef.current);
       showTableTimeoutRef.current = null;
     }
-  }, [setGameState, resetDialogueState]);
+
+    // 10. 清除自动重启定时器（如果存在）
+    if (autoRestartTimerRef.current !== null) {
+      window.clearTimeout(autoRestartTimerRef.current);
+      autoRestartTimerRef.current = null;
+    }
+
+    // 11. 如果需要自动重启，3秒后使用上一局配置自动开始新游戏
+    if (autoRestart) {
+      const savedOptions = lastGameOptionsRef.current;
+      autoRestartTimerRef.current = window.setTimeout(() => {
+        autoRestartTimerRef.current = null;
+        startGame(savedOptions ?? {});
+      }, 3000);
+    }
+  }, [setGameState, resetDialogueState, startGame]);
 
   /**
    * 人类玩家发言 — 将输入框文本添加到游戏消息列表。

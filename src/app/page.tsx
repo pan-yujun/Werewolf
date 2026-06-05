@@ -1619,7 +1619,7 @@ export default function Home() {
                       onCancelSelection={() => setSelectedSeat(null)}
                       onNightAction={handleNightActionConfirm}
                       onBadgeSignup={handleBadgeSignup}
-                      onRestart={restartGame}
+                      onRestart={() => restartGame(true)}
                       onWhiteWolfKingBoom={handleWhiteWolfKingBoom}
                       onViewAnalysis={handleViewAnalysis}
                       onDownloadReplay={downloadReplay}
