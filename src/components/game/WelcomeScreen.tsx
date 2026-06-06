@@ -26,7 +26,7 @@ import { LocaleSwitcher } from "@/components/game/LocaleSwitcher";
 import { CustomCharacterModal } from "@/components/game/CustomCharacterModal";
 import { useCustomCharacters } from "@/hooks/useCustomCharacters";
 import { useCredits } from "@/hooks/useCredits";
-import { difficultyAtom, playerCountAtom, preferredRoleAtom, customRoleConfigEnabledAtom, customRoleConfigAtom, configPresetAtom, gameConfigAtom, resolveGameConfig, persistedCustomCharactersAtom } from "@/store/settings";
+import { difficultyAtom, playerCountAtom, preferredRoleAtom, customRoleConfigEnabledAtom, customRoleConfigAtom, configPresetAtom, gameConfigAtom, resolveGameConfig, persistedCustomCharactersAtom, autoGameEnabledAtom, autoGameCountAtom, autoDownloadLogAtom, autoDownloadReplayAtom } from "@/store/settings";
 import type { CustomRoleConfig } from "@/store/settings";
 import type { ConfigPreset } from "@/types/game";
 import { hasDashscopeKey, hasMimoKey, hasModelscopeKey, hasZenmuxKey, isCustomKeyEnabled } from "@/lib/api-keys";
@@ -408,6 +408,12 @@ export function WelcomeScreen({
   }, [playerCount, configPreset, customRoleConfigEnabled, customRoleConfig, setGameConfig]);
 
   const [persistedCustomCharacters, setPersistedCustomCharacters] = useAtom(persistedCustomCharactersAtom);
+
+  // 自动游戏配置
+  const [autoGameEnabled, setAutoGameEnabled] = useAtom(autoGameEnabledAtom);
+  const [autoGameCount, setAutoGameCount] = useAtom(autoGameCountAtom);
+  const [autoDownloadLog, setAutoDownloadLog] = useAtom(autoDownloadLogAtom);
+  const [autoDownloadReplay, setAutoDownloadReplay] = useAtom(autoDownloadReplayAtom);
 
   // 当勾选/取消勾选角色、修改角色信息或变更角色模型时，同步更新持久化的自定义角色数据
   useEffect(() => {
@@ -896,6 +902,14 @@ export function WelcomeScreen({
           onSoundEnabledChange={onSoundEnabledChange}
           onAiVoiceEnabledChange={onAiVoiceEnabledChange}
           onAutoAdvanceDialogueEnabledChange={onAutoAdvanceDialogueEnabledChange}
+          autoGameEnabled={autoGameEnabled}
+          onAutoGameEnabledChange={setAutoGameEnabled}
+          autoGameCount={autoGameCount}
+          onAutoGameCountChange={setAutoGameCount}
+          autoDownloadLog={autoDownloadLog}
+          onAutoDownloadLogChange={setAutoDownloadLog}
+          autoDownloadReplay={autoDownloadReplay}
+          onAutoDownloadReplayChange={setAutoDownloadReplay}
         />
         <AuthModal open={isAuthOpen} onOpenChange={setIsAuthOpen} />
         <AccountModal open={isAccountOpen} onOpenChange={setIsAccountOpen} />

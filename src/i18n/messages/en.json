@@ -436,6 +436,17 @@
       "title": "Spectator Mode",
       "description": "Watch AI players only, without participating. Tap player cards to reveal their true role"
     },
+    "autoGame": {
+      "title": "Auto Game",
+      "description": "Automatically play multiple games in a row, with optional auto-download of logs and replays",
+      "countLabel": "Number of Games",
+      "countOption": "{n} games",
+      "autoDownloadLog": "Auto Download Log",
+      "autoDownloadLogDesc": "Automatically download game log at the end of each game",
+      "autoDownloadReplay": "Auto Download Replay",
+      "autoDownloadReplayDesc": "Automatically download replay at the end of each game",
+      "progress": "Auto game progress: {current} / {total}"
+    },
     "rolePreference": {
       "label": "Role Preference",
       "random": "Random",

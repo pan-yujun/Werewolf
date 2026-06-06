@@ -56,6 +56,7 @@ import { useTranslations } from "next-intl";          // 国际化翻译 hook
 // ============================================
 import { ALL_MODELS, PLAYER_MODELS, PROJECT_MODELS, isWolfRole, type GameState, type Player, type Phase, type Role, type DevPreset, type ModelRef, type StartGameOptions } from "@/types/game";
 import { gameStateAtom, isValidTransition, clearPersistedGameState, isGameInProgress } from "@/store/game-machine";
+import { autoGameEnabledAtom, autoGameCountAtom, autoDownloadLogAtom, autoDownloadReplayAtom } from "@/store/settings";
 import { getGeneratorModel } from "@/lib/api-keys";
 
 // ============================================
@@ -177,6 +178,18 @@ export function useGameLogic() {
   const [showTable, setShowTable] = useState(false);
   // 游戏日志区域的 DOM 引用，用于自动滚动到底部
   const logRef = useRef<HTMLDivElement>(null);
+
+  // 自动游戏配置
+  const [autoGameEnabled] = useAtom(autoGameEnabledAtom);
+  const [autoGameCount] = useAtom(autoGameCountAtom);
+  const [autoDownloadLog] = useAtom(autoDownloadLogAtom);
+  const [autoDownloadReplay] = useAtom(autoDownloadReplayAtom);
+
+  // 自动游戏运行时状态
+  const autoGameRemainingRef = useRef(0);                            // 剩余自动游戏局数
+  const autoGameDownloadReplayRef = useRef<(() => void) | null>(null); // 回放下载回调
+  const autoGameDownloadLogRef = useRef<(() => void) | null>(null);   // 日志下载回调
+  const autoGameActiveRef = useRef(false);                            // 是否正在自动游戏中
 
   // ============================================
   // 断点恢复相关的状态标记
@@ -627,6 +640,53 @@ export function useGameLogic() {
       cancelled = true;
     };
   }, [buildVotePhaseExtras, gameState, gameState.phase, getToken]);
+
+  // ============================================
+  // 自动游戏：GAME_END 时自动下载 + 自动重启
+  // ============================================
+  useEffect(() => {
+    if (gameState.phase !== "GAME_END") return;
+    if (!autoGameActiveRef.current) return;
+    if (autoGameRemainingRef.current <= 0) return;
+
+    const remaining = autoGameRemainingRef.current;
+    console.info(`[wolfcha] Auto game: GAME_END detected, ${remaining} games remaining`);
+
+    // 递减剩余局数
+    autoGameRemainingRef.current = remaining - 1;
+
+    // 自动下载回放
+    if (autoDownloadReplay && autoGameDownloadReplayRef.current) {
+      try {
+        autoGameDownloadReplayRef.current();
+      } catch (e) {
+        console.warn("[wolfcha] Auto download replay failed:", e);
+      }
+    }
+
+    // 自动下载日志
+    if (autoDownloadLog && autoGameDownloadLogRef.current) {
+      try {
+        autoGameDownloadLogRef.current();
+      } catch (e) {
+        console.warn("[wolfcha] Auto download log failed:", e);
+      }
+    }
+
+    // 如果还有剩余局数，延迟后自动重启
+    if (autoGameRemainingRef.current > 0) {
+      autoRestartTimerRef.current = window.setTimeout(() => {
+        autoRestartTimerRef.current = null;
+        const savedOptions = lastGameOptionsRef.current;
+        startGame(savedOptions ?? {});
+      }, 3000);
+    } else {
+      // 所有自动游戏完成
+      autoGameActiveRef.current = false;
+      console.info("[wolfcha] Auto game: all games completed");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState.phase]);
 
   // ============================================
   // 每日总结生成（AI 生成当天发言摘要，供后续 LLM 调用使用）
@@ -1776,6 +1836,12 @@ export function useGameLogic() {
     // 保存本次游戏配置，供"再来一局"时复用
     lastGameOptionsRef.current = options ?? {};
 
+    // 初始化自动游戏：如果是首次启动（非自动重启），设置剩余局数
+    if (autoGameEnabled && autoGameRemainingRef.current <= 0) {
+      autoGameRemainingRef.current = autoGameCount;
+      autoGameActiveRef.current = true;
+    }
+
     const totalPlayers = playerCount;
 
     resetDialogueState();
@@ -2829,6 +2895,16 @@ export function useGameLogic() {
     }));
   }, [setGameState]);
 
+  /**
+   * 注入自动游戏的下载回调函数。
+   * 由 page.tsx 在渲染时调用，将 replay 下载和 log 下载函数注入到 useGameLogic 中，
+   * 使得 GAME_END 时能自动触发下载。
+   */
+  const setAutoGameDownloadCallbacks = useCallback((replayFn: () => void, logFn: () => void) => {
+    autoGameDownloadReplayRef.current = replayFn;
+    autoGameDownloadLogRef.current = logFn;
+  }, []);
+
   // ============================================
   // 返回 API — 暴露给 UI 组件的完整接口
   // ============================================
@@ -2873,5 +2949,8 @@ export function useGameLogic() {
     markCurrentSegmentCompleted,
     isCurrentSegmentCompleted,
     shouldAutoAdvanceToNextAI,
+
+    // 自动游戏
+    setAutoGameDownloadCallbacks,
   };
 }

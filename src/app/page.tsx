@@ -66,6 +66,43 @@ import { useTutorial } from "@/hooks/useTutorial";
 import { persistReferralFromCurrentUrl, removeReferralFromCurrentUrl } from "@/lib/referral";
 import { useRouter, useParams } from "next/navigation";
 import { useGameAnalysis } from "@/hooks/useGameAnalysis";
+import { gameLogger, type LogEntry } from "@/lib/game-logger";
+
+/** 下载游戏日志为 .txt 文件 */
+function downloadGameLog(logs: LogEntry[]) {
+  const lines = [
+    "╔══════════════════════════════════════╗",
+    "║        狼人杀 · 游戏日志             ║",
+    "╚══════════════════════════════════════╝",
+    "",
+    `导出时间: ${new Date().toLocaleString("zh-CN")}`,
+    `日志条数: ${logs.length}`,
+    "",
+    "────────────────────────────────────────",
+    "",
+  ];
+
+  for (const entry of logs) {
+    const time = new Date(entry.timestamp).toLocaleTimeString("zh-CN", { hour12: false });
+    const isSeparator = entry.message.startsWith("───");
+    const prefix = isSeparator ? "" : "  ";
+    lines.push(`[${time}] ${prefix}${entry.emoji} ${entry.message}`);
+  }
+
+  lines.push("");
+  lines.push("────────────────────────────────────────");
+  lines.push("日志结束");
+
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `wolfcha-log-${Date.now()}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 const RITUAL_CUE_DURATION_SECONDS = 2.2;
 const DAY_NIGHT_BLINK = {
@@ -177,6 +214,7 @@ export default function Home() {
     markCurrentSegmentCompleted,
     shouldAutoAdvanceToNextAI,
     downloadReplay,
+    setAutoGameDownloadCallbacks,
   } = useGameLogic();
   const { settings, setBgmVolume, setSoundEnabled, setAiVoiceEnabled, setGenshinMode, setSpectatorMode, setAutoAdvanceDialogueEnabled } = useSettings();
   const { bgmVolume, isSoundEnabled, isAiVoiceEnabled, isGenshinMode, isSpectatorMode, isAutoAdvanceDialogueEnabled } = settings;
@@ -196,6 +234,18 @@ export default function Home() {
 
   // 游戏结束时自动触发复盘分析生成
   useGameAnalysis();
+
+  // 注入自动游戏的下载回调（replay + log）
+  useEffect(() => {
+    const replayFn = () => downloadReplay?.();
+    const logFn = () => {
+      const logs = gameLogger.getLogs();
+      if (logs.length > 0) {
+        downloadGameLog(logs);
+      }
+    };
+    setAutoGameDownloadCallbacks(replayFn, logFn);
+  }, [downloadReplay, setAutoGameDownloadCallbacks]);
 
   const [visualIsNight, setVisualIsNight] = useState(isNight);
   const visualIsNightRef = useRef(isNight);

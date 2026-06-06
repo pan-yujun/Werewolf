@@ -74,6 +74,15 @@ interface GameSetupModalProps {
   onSoundEnabledChange: (value: boolean) => void;
   onAiVoiceEnabledChange: (value: boolean) => void;
   onAutoAdvanceDialogueEnabledChange: (value: boolean) => void;
+  // 自动游戏
+  autoGameEnabled: boolean;
+  onAutoGameEnabledChange: (value: boolean) => void;
+  autoGameCount: number;
+  onAutoGameCountChange: (value: number) => void;
+  autoDownloadLog: boolean;
+  onAutoDownloadLogChange: (value: boolean) => void;
+  autoDownloadReplay: boolean;
+  onAutoDownloadReplayChange: (value: boolean) => void;
 }
 
 
@@ -102,6 +111,14 @@ export function GameSetupModal({
   onSoundEnabledChange,
   onAiVoiceEnabledChange,
   onAutoAdvanceDialogueEnabledChange,
+  autoGameEnabled,
+  onAutoGameEnabledChange,
+  autoGameCount,
+  onAutoGameCountChange,
+  autoDownloadLog,
+  onAutoDownloadLogChange,
+  autoDownloadReplay,
+  onAutoDownloadReplayChange,
 }: GameSetupModalProps) {
   const t = useTranslations();
 
@@ -334,6 +351,64 @@ export function GameSetupModal({
             </div>
             </div>
             <Switch className="shrink-0 mt-1" checked={isSpectatorMode} onCheckedChange={onSpectatorModeChange} />
+          </div>
+
+          {/* 自动游戏配置 */}
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-[var(--text-primary)]">{t("gameSetup.autoGame.title")}</div>
+                <div className="text-xs text-[var(--text-muted)]">
+                  {t("gameSetup.autoGame.description")}
+                </div>
+              </div>
+              <Switch className="shrink-0 mt-1" checked={autoGameEnabled} onCheckedChange={onAutoGameEnabledChange} />
+            </div>
+
+            {autoGameEnabled && (
+              <div className="space-y-3 rounded-lg border border-[var(--border-color)] p-3">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-[var(--text-primary)]">{t("gameSetup.autoGame.countLabel")}</div>
+                  <Select
+                    value={String(autoGameCount)}
+                    onValueChange={(val) => onAutoGameCountChange(Number(val))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[1, 2, 3, 5, 10, 20, 50].map((n) => (
+                        <SelectItem
+                          key={n}
+                          value={String(n)}
+                          label={t("gameSetup.autoGame.countOption", { n })}
+                        />
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-[var(--text-primary)]">{t("gameSetup.autoGame.autoDownloadLog")}</div>
+                    <div className="text-xs text-[var(--text-muted)]">
+                      {t("gameSetup.autoGame.autoDownloadLogDesc")}
+                    </div>
+                  </div>
+                  <Switch className="shrink-0 mt-1" checked={autoDownloadLog} onCheckedChange={onAutoDownloadLogChange} />
+                </div>
+
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-[var(--text-primary)]">{t("gameSetup.autoGame.autoDownloadReplay")}</div>
+                    <div className="text-xs text-[var(--text-muted)]">
+                      {t("gameSetup.autoGame.autoDownloadReplayDesc")}
+                    </div>
+                  </div>
+                  <Switch className="shrink-0 mt-1" checked={autoDownloadReplay} onCheckedChange={onAutoDownloadReplayChange} />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-[var(--border-color)] pt-4">

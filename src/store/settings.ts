@@ -220,6 +220,35 @@ const rawPersistedCustomCharactersAtom = atomWithStorage<CustomCharacterData[]>(
   []
 );
 
+// ========== 自动游戏配置 ==========
+
+/** 自动游戏开关：开启后自动进行多局游戏 */
+export const autoGameEnabledAtom = atomWithStorage<boolean>("wolfcha.settings.auto_game_enabled", false);
+
+/** 自动游戏局数：最小 1，最大 99 */
+const DEFAULT_AUTO_GAME_COUNT = 1;
+const normalizeAutoGameCount = (value: number) => {
+  if (!Number.isFinite(value)) return DEFAULT_AUTO_GAME_COUNT;
+  return Math.min(99, Math.max(1, Math.round(value)));
+};
+
+const rawAutoGameCountAtom = atomWithStorage<number>("wolfcha.settings.auto_game_count", DEFAULT_AUTO_GAME_COUNT);
+
+export const autoGameCountAtom = atom(
+  (get) => normalizeAutoGameCount(get(rawAutoGameCountAtom)),
+  (get, set, update: number | ((prev: number) => number)) => {
+    const prev = normalizeAutoGameCount(get(rawAutoGameCountAtom));
+    const next = typeof update === "function" ? update(prev) : update;
+    set(rawAutoGameCountAtom, normalizeAutoGameCount(next));
+  }
+);
+
+/** 自动下载日志：每局结束时自动下载游戏日志 */
+export const autoDownloadLogAtom = atomWithStorage<boolean>("wolfcha.settings.auto_download_log", false);
+
+/** 自动下载回放：每局结束时自动下载回放记录 */
+export const autoDownloadReplayAtom = atomWithStorage<boolean>("wolfcha.settings.auto_download_replay", false);
+
 export const persistedCustomCharactersAtom = atom(
   (get) => get(rawPersistedCustomCharactersAtom),
   (get, set, update: CustomCharacterData[] | ((prev: CustomCharacterData[]) => CustomCharacterData[])) => {

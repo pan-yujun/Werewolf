@@ -463,6 +463,17 @@
       "title": "纯斗蛐蛐模式",
       "description": "不参与游戏，只看 AI 玩儿。点击玩家卡片可查看真实身份"
     },
+    "autoGame": {
+      "title": "自动游戏",
+      "description": "开启后自动进行多局游戏，每局结束时可自动下载日志和回放",
+      "countLabel": "游戏局数",
+      "countOption": "{n} 局",
+      "autoDownloadLog": "自动下载日志",
+      "autoDownloadLogDesc": "每局结束时自动下载游戏日志",
+      "autoDownloadReplay": "自动下载回放",
+      "autoDownloadReplayDesc": "每局结束时自动下载回放记录",
+      "progress": "自动游戏进度：{current} / {total}"
+    },
     "rolePreference": {
       "label": "身份偏好",
       "random": "随机分配",
