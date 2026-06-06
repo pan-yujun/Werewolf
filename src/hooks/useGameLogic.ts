@@ -675,8 +675,34 @@ export function useGameLogic() {
 
     // 如果还有剩余局数，延迟后自动重启
     if (autoGameRemainingRef.current > 0) {
+      // 延迟 3 秒后清理上一局状态并启动新一局
+      // 注意：清理逻辑与 restartGame 保持一致，但不经过 restartGame 以避免双重定时器
       autoRestartTimerRef.current = window.setTimeout(() => {
         autoRestartTimerRef.current = null;
+
+        // 清理上一局状态（与 restartGame 对齐）
+        gameLogger.gameRestart();
+        setTimeout(() => gameLogger.clearLogs(), 100);
+        flowController.current.interrupt();
+        gameSessionTracker.end(null, false).catch(() => {});
+        clearPersistedGameState();
+        resetDialogueState();
+        setInputText("");
+        setGameStarted(false);
+        pendingStartStateRef.current = null;
+        hasContinuedAfterRevealRef.current = false;
+        isAwaitingRoleRevealRef.current = false;
+        badgeSpeechEndRef.current = null;
+        afterLastWordsRef.current = null;
+        nightContinueRef.current = null;
+        afterBadgeTransferRef.current = null;
+        isResolvingVotesRef.current = false;
+        if (showTableTimeoutRef.current !== null) {
+          window.clearTimeout(showTableTimeoutRef.current);
+          showTableTimeoutRef.current = null;
+        }
+
+        // 启动新一局（使用上一局的配置）
         const savedOptions = lastGameOptionsRef.current;
         startGame(savedOptions ?? {});
       }, 3000);
@@ -685,6 +711,14 @@ export function useGameLogic() {
       autoGameActiveRef.current = false;
       console.info("[wolfcha] Auto game: all games completed");
     }
+
+    // 清理：组件卸载或 effect 重新运行时清除定时器
+    return () => {
+      if (autoRestartTimerRef.current !== null) {
+        window.clearTimeout(autoRestartTimerRef.current);
+        autoRestartTimerRef.current = null;
+      }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState.phase]);
 
@@ -2243,7 +2277,7 @@ export function useGameLogic() {
         setLoadingProgress({ percent: 0, stage: "" });
       }, 500);
     }
-  }, [humanName, resetDialogueState, setDialogue, setGameStarted, setGameState, setInputText, setIsLoading, setShowTable, t]);
+  }, [autoGameCount, autoGameEnabled, humanName, resetDialogueState, setDialogue, setGameStarted, setGameState, setInputText, setIsLoading, setShowTable, t]);
 
   /**
    * 角色揭示后继续 — 玩家在角色揭示界面点击确认后调用。
@@ -2341,7 +2375,8 @@ export function useGameLogic() {
 
     // 11. 如果需要自动重启，3秒后使用上一局配置自动开始新游戏
     //     注意：若用户在 3 秒内手动点击"开始游戏"，startGame 会取消此定时器
-    if (autoRestart) {
+    //     注意：自动游戏模式下，GAME_END 的 useEffect 已经负责重启，此处不再重复设置定时器
+    if (autoRestart && !autoGameActiveRef.current) {
       const savedOptions = lastGameOptionsRef.current;
       autoRestartTimerRef.current = window.setTimeout(() => {
         autoRestartTimerRef.current = null;
