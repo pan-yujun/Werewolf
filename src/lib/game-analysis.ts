@@ -1,6 +1,30 @@
 /**
  * 游戏分析数据生成器
- * 从 GameState 解析并生成 GameAnalysisData
+ *
+ * 从 GameState 解析并生成 GameAnalysisData，用于游戏结束后的复盘分析页面
+ *
+ * 包含以下 LLM 调用场景：
+ *
+ * 【场景 17】AI 发言摘要 — generateAISpeechSummaries()
+ *   模型: SUMMARY_MODEL
+ *   温度: 0.3
+ *   输出: 每个玩家的第一人称摘要 + 当天整体概括
+ *
+ * 【场景 18】MVP/SVP/评价/评分 — generateAIAnalysisData()
+ *   模型: SUMMARY_MODEL
+ *   温度: 0.7
+ *   输出: awards（MVP/SVP）+ highlightQuote + reviews + speechScores
+ *
+ * 【场景 19】按需增量分析 — enrichAnalysisWithAI()
+ *   根据 type 参数分发到上述两个函数
+ *
+ * 纯计算函数（无 LLM 调用）：
+ * - generateBasicGameAnalysis()  — 基础分析数据（游戏结束后立即展示）
+ * - buildPlayerSnapshots()       — 玩家快照
+ * - buildRoundStates()           — 回合状态
+ * - buildTimeline()              — 时间线
+ * - evaluateTag()                — 评估标签
+ * - calculateRadarStats()        — 雷达图统计
  */
 
 import type { GameState, Player, Role, Alignment, Phase } from "@/types/game";
@@ -863,6 +887,21 @@ interface AISpeechSummaryResult {
   daySummaries: Record<number, string>;
 }
 
+/**
+ * 【场景 17】AI 发言摘要生成
+ *
+ * 游戏结束后，为每天的发言生成：
+ * 1. 每个玩家的第一人称摘要（1-2句话）
+ * 2. 当天发言阶段的整体概括（50-80字）
+ *
+ * 模型: SUMMARY_MODEL
+ * 温度: 0.3
+ * 输出: JSON {electionSummaries, discussionSummaries, daySummary}
+ *
+ * @param state - 游戏状态
+ * @param model - 模型名称
+ * @returns 包含竞选摘要、讨论摘要、每日概括的对象
+ */
 export async function generateAISpeechSummaries(
   state: GameState,
   model: string
@@ -1551,7 +1590,18 @@ export interface EnrichResult {
 }
 
 /**
- * 按需 AI 分析：根据 type 调用对应 LLM 函数并返回结果
+ * 【场景 19】按需增量分析
+ *
+ * 复盘页面按需加载，根据 type 参数调用对应的 LLM 函数：
+ * - "speeches"    → generateAISpeechSummaries()
+ * - "awards"      → generateAIAnalysisData()，仅返回 awards
+ * - "reviews"     → generateAIAnalysisData()，仅返回 reviews
+ * - "speechScores" → generateAIAnalysisData()，仅返回 speechScores
+ *
+ * @param type - 分析类型
+ * @param state - 游戏状态
+ * @param model - 模型名称（可选）
+ * @returns EnrichResult
  */
 export async function enrichAnalysisWithAI(
   type: "awards" | "reviews" | "speechScores" | "speeches",
@@ -1599,6 +1649,26 @@ export interface AIAnalysisResult {
   };
 }
 
+/**
+ * 【场景 18】MVP/SVP/评价/评分生成
+ *
+ * 游戏结束后，生成以下分析数据：
+ * - awards: MVP（获胜方最佳）+ SVP（失败方最佳）
+ * - highlightQuote: 从发言中选取的精彩一句话
+ * - reviews: 2 条队友评价 + 1 条对手评价（每条 20 字内）
+ * - speechScores: 逻辑严密度和表达清晰度（0-100）
+ *
+ * 模型: SUMMARY_MODEL
+ * 温度: 0.7
+ * 输出: JSON AIAnalysisResult
+ *
+ * 结果经过 correctAIResult() 校正，确保 playerId、avatar 与实际玩家匹配
+ *
+ * @param state - 游戏状态
+ * @param humanPlayer - 被评价的人类玩家
+ * @param model - 模型名称
+ * @returns AIAnalysisResult
+ */
 export async function generateAIAnalysisData(
   state: GameState,
   humanPlayer: Player,

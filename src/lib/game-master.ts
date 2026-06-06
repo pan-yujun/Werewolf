@@ -1,3 +1,45 @@
+/**
+ * 游戏逻辑主控（Game Master）
+ *
+ * 本文件是狼人杀游戏的核心逻辑层，包含：
+ *
+ * 一、纯函数（游戏状态操作）：
+ * - createInitialGameState()  — 创建初始游戏状态
+ * - getRoleConfiguration()    — 获取角色分配配置
+ * - setupPlayers()            — 初始化所有玩家
+ * - addSystemMessage()        — 添加系统消息
+ * - addPlayerMessage()        — 添加玩家消息
+ * - transitionPhase()         — 阶段转换
+ * - checkWinCondition()       — 胜负判定
+ * - killPlayer()              — 击杀玩家
+ * - getNextAliveSeat()        — 获取下一个存活座位
+ * - getSpeakingOrder()        — 计算发言顺序
+ * - resolveSpeechStartSeat()  — 计算发言起始座位
+ * - tallyVotes()              — 统计投票
+ *
+ * 二、LLM 调用函数（AI 玩家决策）：
+ * - generateDailySummary()           — 每日总结（场景 16）
+ * - generateAISpeechStream()         — AI 发言（流式）
+ * - generateAISpeechSegments()       — AI 发言（段落）
+ * - generateAISpeechSegmentsStream() — AI 发言（流式段落）（场景 7/9/10/11）
+ * - generateAIVote()                 — 白天投票（场景 12）
+ * - generateAIBadgeSignupBatch()     — 警长竞选报名（场景 6）
+ * - generateAIBadgeVote()            — 警长投票（场景 8）
+ * - generateBadgeTransfer()          — 警徽移交（场景 15）
+ * - generateSeerAction()             — 预言家查验（场景 5）
+ * - generateWolfAction()             — 狼人出刀（场景 3）
+ * - generateWitchAction()            — 女巫用药（场景 4）
+ * - generateGuardAction()            — 守卫守护（场景 2）
+ * - generateHunterShoot()            — 猎人开枪（场景 13）
+ * - generateWhiteWolfKingBoomDecision() — 白狼王自爆（场景 14）
+ *
+ * 三、辅助函数：
+ * - resolvePhasePrompt()     — 解析阶段提示词
+ * - buildMessagesForPrompt() — 构建 LLM 消息
+ * - sanitizeModelArtifacts() — 清理模型输出伪影
+ * - sanitizeSeatMentions()   — 座位号提及格式化
+ */
+
 import { v4 as uuidv4 } from "uuid";
 import { generateCompletion, generateCompletionBatch, generateCompletionStream, mergeOptionsFromModelRef, stripMarkdownCodeFences, stripReasoningArtifacts, type GenerateOptions, type LLMMessage } from "./llm";
 import type { ChatCompletionResponse } from "./llm";
@@ -48,8 +90,10 @@ function getRandomModelRef(): ModelRef {
   return PLAYER_MODELS[randomIndex];
 }
 
+/** 阶段管理器实例，负责将 Phase 枚举映射到 GamePhase 类 */
 const phaseManager = new PhaseManager();
 
+/** 根据模型名称获取 ModelRef，优先从 PROJECT_MODELS 中查找 */
 function getModelRefForModel(model: string): ModelRef {
   return (
     PROJECT_MODELS.find((ref) => ref.model === model) ??
@@ -107,6 +151,17 @@ function sanitizeSeatMentions(text: string, players: Player[]): string {
   return out;
 }
 
+/**
+ * 解析阶段提示词
+ * 通过 PhaseManager 获取指定阶段的 GamePhase 类，调用其 getPrompt() 方法
+ * 如果当前 state.phase 与请求的 phase 不同，会临时覆盖 state.phase
+ *
+ * @param phase - 目标阶段枚举值
+ * @param state - 游戏状态
+ * @param player - 当前 AI 玩家
+ * @param extras - 额外参数（如狼人投票意向、女巫药水状态等）
+ * @returns PromptResult，包含 systemParts、system、user
+ */
 function resolvePhasePrompt(
   phase: Phase,
   state: GameState,
@@ -123,6 +178,14 @@ function resolvePhasePrompt(
   return prompt;
 }
 
+/**
+ * 将 PromptResult 转换为 LLM 消息数组
+ * 使用 buildCachedSystemMessageFromParts() 构建带缓存控制的系统消息
+ *
+ * @param prompt - 阶段提示词
+ * @param useCache - 是否启用缓存控制（默认 true）
+ * @returns 包含 messages 数组和 systemMessage 的对象
+ */
 function buildMessagesForPrompt(
   prompt: PromptResult,
   useCache: boolean = true
@@ -650,6 +713,22 @@ function extractVoteDataFromDayMessages(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * 【场景 16】每日总结
+ *
+ * 每天白天结束时（投票/处决后）调用，生成当天的要点摘要
+ *
+ * 模型: SUMMARY_MODEL
+ * 温度: 0.1（STRICT，追求准确）
+ * 输出: JSON {bullets: ["要点1", "要点2", ...]}
+ *
+ * 输入:
+ * - System: "你是狼人杀游戏总结助手"
+ * - User: 第 N 天的完整讨论记录（最多 15000 字符）
+ *
+ * @param state - 当前游戏状态
+ * @returns 包含 bullets（要点数组）和 voteData（投票数据）的对象
+ */
 export async function generateDailySummary(
   state: GameState
 ): Promise<{ bullets: string[]; voteData?: DailySummaryVoteData }> {
@@ -996,8 +1075,25 @@ export interface StreamingSpeechOptions {
 }
 
 /**
- * 流式生成 AI 发言段落
- * 实时输出发言内容，每完成一个段落就立即通知
+ * 【场景 7/9/10/11】流式生成 AI 发言段落
+ *
+ * 用于以下场景：
+ * - DAY_BADGE_SPEECH（警长竞选发言）
+ * - DAY_SPEECH（白天自由讨论发言）
+ * - DAY_LAST_WORDS（遗言发言）
+ * - DAY_PK_SPEECH（PK 发言）
+ *
+ * 模型: AI 玩家各自的 modelRef
+ * 温度: 1.1（SPEECH，鼓励自然表达）
+ * 输出: 流式文本发言（逐段输出到 UI）
+ *
+ * 实时输出发言内容，每完成一个段落就立即通知 UI
+ * 使用 StreamingSpeechParser 实时解析段落
+ *
+ * @param state - 当前游戏状态
+ * @param player - 当前 AI 玩家
+ * @param options - 回调选项（onSegmentReceived/onProgress/onComplete/onError）
+ * @returns 发言段落数组
  */
 export async function generateAISpeechSegmentsStream(
   state: GameState,
@@ -1194,6 +1290,24 @@ export async function generateAISpeechSegmentsStream(
   }
 }
 
+/**
+ * 【场景 12】白天投票
+ *
+ * 每天讨论结束后，AI 玩家投票选择处决目标
+ *
+ * 模型: AI 玩家各自的 modelRef
+ * 温度: 0.4（ACTION，偏逻辑）
+ * 输出: JSON {seat: N, reason: "投票理由"}
+ *
+ * 解析逻辑:
+ * - 尝试从 seat/targetSeat/target/vote 字段提取座位号
+ * - PK 时限定投票目标为 PK 候选人
+ * - 解析失败返回 AI_VOTE_ABSTAIN（-1）
+ *
+ * @param state - 当前游戏状态
+ * @param player - 当前 AI 玩家
+ * @returns 包含 seat（目标座位）和 reason（投票理由）的对象
+ */
 export async function generateAIVote(
   state: GameState,
   player: Player
@@ -1403,8 +1517,21 @@ function jsonRetryInstruction(formatHint: string): string {
 }
 
 /**
- * 使用 SUMMARY_MODEL 一次性判断所有玩家是否上警
+ * 【场景 6】警长竞选报名决策（批量）
+ *
+ * 使用 SUMMARY_MODEL 一次性判断所有 AI 玩家是否上警
  * 基于玩家的背景信息和第一晚的操作信息来决策
+ *
+ * 模型: SUMMARY_MODEL
+ * 温度: 0.7（BADGE_SIGNUP，平衡模式）
+ * 输出: JSON（多种格式兼容）
+ *   - {"decisions": {"1": true, "2": false, ...}}
+ *   - {"signup": [1, 3, 5]}
+ *   - {"1": true, "2": false, ...}
+ *
+ * @param state - 当前游戏状态
+ * @param players - 需要决策的 AI 玩家列表
+ * @returns Record<string, boolean>，key 为 playerId，value 为是否上警
  */
 export async function generateAIBadgeSignupBatch(
   state: GameState,
@@ -1604,6 +1731,19 @@ export async function generateAIBadgeSignupBatch(
   return parsedByPlayer;
 }
 
+/**
+ * 【场景 8】警长投票
+ *
+ * 警长竞选阶段，AI 玩家投票选举警长
+ *
+ * 模型: AI 玩家各自的 modelRef
+ * 温度: 0.4（ACTION）
+ * 输出: JSON {seat: N}，表示投票目标
+ *
+ * @param state - 当前游戏状态
+ * @param player - 当前 AI 玩家
+ * @returns 目标座位号，解析失败返回 BADGE_VOTE_ABSTAIN（-1）
+ */
 export async function generateAIBadgeVote(
   state: GameState,
   player: Player
@@ -1670,6 +1810,23 @@ export async function generateAIBadgeVote(
   }
 }
 
+/**
+ * 【场景 15】警徽移交
+ *
+ * 警长死亡时，AI 决定移交给谁或撕毁警徽
+ *
+ * 模型: AI 玩家各自的 modelRef
+ * 温度: 0.4（ACTION）
+ * 输出: 目标座位号（移交）或 BADGE_TRANSFER_TORN（-1，撕毁）
+ *
+ * 特殊处理:
+ * - 如果是预言家且已确认狼人座位，会避免移交给狼人
+ * - 解析失败默认撕毁警徽
+ *
+ * @param state - 当前游戏状态
+ * @param player - 当前 AI 玩家（警长）
+ * @returns 目标座位号或 -1（撕毁）
+ */
 export async function generateBadgeTransfer(
   state: GameState,
   player: Player
@@ -1768,6 +1925,24 @@ export async function generateBadgeTransfer(
   }
 }
 
+/**
+ * 【场景 5】预言家查验
+ *
+ * 夜晚阶段，AI 预言家选择查验目标
+ *
+ * 模型: AI 玩家各自的 modelRef
+ * 温度: 0.4（ACTION）
+ * 输出: JSON {seat: N}，表示查验目标座位号
+ *
+ * 输入提示词包含:
+ * - 已查验列表（避免重复查验）
+ * - 未查验优先推荐
+ * - 可选目标列表
+ *
+ * @param state - 当前游戏状态
+ * @param player - 当前 AI 玩家（预言家）
+ * @returns 目标座位号，解析失败返回 undefined
+ */
 export async function generateSeerAction(
   state: GameState,
   player: Player
@@ -1834,6 +2009,24 @@ export async function generateSeerAction(
   }
 }
 
+/**
+ * 【场景 3】狼人出刀
+ *
+ * 夜晚阶段，AI 狼人选择击杀目标
+ *
+ * 模型: AI 玩家各自的 modelRef
+ * 温度: 0.4（ACTION）
+ * 输出: JSON {seat: N}，表示击杀目标座位号
+ *
+ * 特殊处理:
+ * - 如果有多个狼人，第一个狼人的决策作为共识
+ * - existingVotes 参数传递其他狼人的投票意向，供当前狼人参考
+ *
+ * @param state - 当前游戏状态
+ * @param player - 当前 AI 玩家（狼人）
+ * @param existingVotes - 其他狼人的投票意向
+ * @returns 目标座位号，解析失败返回 undefined
+ */
 export async function generateWolfAction(
   state: GameState,
   player: Player,
@@ -1904,6 +2097,23 @@ export type WitchAction =
   | { type: "poison"; target: number }
   | { type: "pass" };
 
+/**
+ * 【场景 4】女巫用药
+ *
+ * 夜晚阶段，AI 女巫决定使用解药/毒药/不操作
+ *
+ * 模型: AI 玩家各自的 modelRef
+ * 温度: 0.4（ACTION）
+ * 输出: WitchAction 类型
+ *   - {type: "save"} — 使用解药
+ *   - {type: "poison", target: N} — 使用毒药
+ *   - {type: "pass"} — 不操作
+ *
+ * @param state - 当前游戏状态
+ * @param player - 当前 AI 玩家（女巫）
+ * @param wolfTarget - 今晚被狼人击杀的目标座位号（用于决定是否可用解药）
+ * @returns WitchAction
+ */
 export async function generateWitchAction(
   state: GameState,
   player: Player,
@@ -2004,6 +2214,19 @@ export async function generateWitchAction(
 
 // ...
 
+/**
+ * 【场景 2】守卫守护
+ *
+ * 夜晚阶段，AI 守卫选择守护目标（不能连续两晚守护同一人）
+ *
+ * 模型: AI 玩家各自的 modelRef
+ * 温度: 0.4（ACTION）
+ * 输出: JSON {seat: N}，表示守护目标座位号
+ *
+ * @param state - 当前游戏状态
+ * @param player - 当前 AI 玩家（守卫）
+ * @returns 目标座位号，解析失败返回 undefined
+ */
 export async function generateGuardAction(
   state: GameState,
   player: Player
@@ -2073,6 +2296,19 @@ export async function generateGuardAction(
 
 // ...
 
+/**
+ * 【场景 13】猎人开枪
+ *
+ * 猎人死亡时，AI 决定是否开枪及目标
+ *
+ * 模型: AI 玩家各自的 modelRef
+ * 温度: 0.4（ACTION）
+ * 输出: JSON {seat: N}（开枪目标）或 {action: "pass"}（不开枪）
+ *
+ * @param state - 当前游戏状态
+ * @param player - 当前 AI 玩家（猎人）
+ * @returns 目标座位号（开枪）或 null（不开枪）
+ */
 export async function generateHunterShoot(
   state: GameState,
   player: Player
@@ -2155,7 +2391,17 @@ export async function generateHunterShoot(
 }
 
 /**
- * AI 白狼王自爆决策：返回目标座位号（自爆）或 null（不自爆）
+ * 【场景 14】白狼王自爆决策
+ *
+ * 白狼王发言阶段，AI 决定是否自爆带走一人
+ *
+ * 模型: AI 玩家各自的 modelRef
+ * 温度: 0.4（ACTION）
+ * 输出: JSON {action: "boom", seat: N}（自爆带走目标）或 {action: "pass"}（不自爆）
+ *
+ * @param state - 当前游戏状态
+ * @param player - 当前 AI 玩家（白狼王）
+ * @returns 目标座位号（自爆）或 null（不自爆）
  */
 export async function generateWhiteWolfKingBoomDecision(
   state: GameState,

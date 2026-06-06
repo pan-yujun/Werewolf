@@ -1,3 +1,25 @@
+/**
+ * LLM 调用基础设施层
+ *
+ * 本文件是所有 LLM 调用的底层入口，提供以下核心功能：
+ * 1. generateCompletion()     — 非流式单次调用，用于结构化决策（投票、技能、总结等）
+ * 2. generateCompletionStream() — 流式调用，用于 AI 发言（逐字输出到 UI）
+ * 3. generateJSON<T>()       — 在 generateCompletion 之上加 JSON 格式约束 + 容错解析
+ * 4. generateCompletionBatch() — 批量调用（当前未被主要流程使用）
+ *
+ * 所有调用均通过 POST /api/chat 发送到服务端代理，支持多家 Provider：
+ * - zenmux（默认）
+ * - dashscope（阿里云）
+ * - mimo（MiniMax）
+ * - modelscope
+ * - tokendance
+ *
+ * 错误处理：
+ * - 指数退避重试（最多 4 次）
+ * - 配额耗尽检测（[QUOTA_EXHAUSTED] 标记）
+ * - JSON 容错解析（处理 LLM 返回的不规范 JSON）
+ */
+
 import { getDashscopeApiKey, getMimoApiKey, getModelscopeApiKey, getZenmuxApiKey, isCustomKeyEnabled } from "@/lib/api-keys";
 import { ALL_MODELS, AVAILABLE_MODELS, PROJECT_MODELS, type ModelRef } from "@/types/game";
 import { gameStatsTracker } from "@/hooks/useGameStats";
@@ -5,26 +27,35 @@ import { gameSessionTracker } from "@/lib/game-session-tracker";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import { parseLLMJson } from "./llm-json";
 
+/** LLM 消息内容部分类型：支持文本、图片、音频 */
 export type LLMContentPart =
   | { type: "text"; text: string; cache_control?: { type: "ephemeral"; ttl?: "1h" } }
   | { type: "image_url"; image_url: { url: string; detail?: string } }
   | { type: "input_audio"; input_audio: { data: string; format: "mp3" | "wav" } };
 
+/** API Key 来源：用户自定义 或 项目内置 */
 export type ApiKeySource = "user" | "project";
 
+/** LLM 消息结构：角色（system/user/assistant）+ 内容 + 推理详情 */
 export interface LLMMessage {
   role: "system" | "user" | "assistant";
   content: string | LLMContentPart[];
   reasoning_details?: unknown;
 }
 
+/** 支持的 LLM 提供商类型 */
 type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope";
 
+/** 类型守卫：检查值是否为普通对象 */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
 
+/**
+ * 根据模型名称获取对应的 Provider
+ * 优先从 PROJECT_MODELS 中查找，其次从 ALL_MODELS 中查找，默认返回 "zenmux"
+ */
 function getProviderForModel(model: string): Provider {
    const modelRef =
      ALL_MODELS.find((ref) => ref.model === model) ??
@@ -32,9 +63,11 @@ function getProviderForModel(model: string): Provider {
    return modelRef?.provider ?? "zenmux";
  }
 
-// When using built-in keys (custom disabled), only project-key models are allowed.
-// Game state may contain modelRef from a custom-key game; map it back to a built-in
-// model to avoid requiring a user-supplied key after the toggle is turned off.
+/**
+ * 当使用内置 Key（自定义 Key 关闭）时，将模型解析为内置可用模型
+ * 游戏状态可能包含自定义 Key 游戏的 modelRef，需要映射回内置模型
+ * 优先使用 mimo，其次 zenmux，最后回退到第一个可用模型
+ */
 function resolveModelForBuiltin(model: string): string {
   if (PROJECT_MODELS.some((r) => r.model === model)) return model;
   // Prefer mimo if available, then zenmux, then first available
@@ -45,6 +78,12 @@ function resolveModelForBuiltin(model: string): string {
   return m?.model ?? model;
 }
 
+/**
+ * 解析 API Key 来源
+ * 根据模型的 provider 决定使用用户自定义 Key 还是项目内置 Key
+ * - 自定义 Key 关闭时 → 返回 "project"
+ * - 自定义 Key 开启时 → 根据 provider 检查对应 Key 是否存在
+ */
 export function resolveApiKeySource(model: string): ApiKeySource {
    const customEnabled = isCustomKeyEnabled();
    if (!customEnabled) return "project";
@@ -114,7 +153,11 @@ export interface GenerateOptions {
   response_format?: ResponseFormat;
 }
 
-/** Merge modelRef overrides (temperature, reasoning) into options; modelRef values override call-time when present. */
+/**
+ * 合并 modelRef 的覆盖参数（temperature, reasoning）到 options 中
+ * modelRef 中的值会覆盖调用时传入的值
+ * 用于将 AI 玩家各自的模型配置应用到 LLM 调用
+ */
 export function mergeOptionsFromModelRef<T extends GenerateOptions>(
   modelRef: ModelRef | undefined,
   options: T
@@ -197,6 +240,13 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * 带重试的 HTTP 请求
+ * - 可重试状态码：429（限流）、500/502/503/504（服务器错误）
+ * - 指数退避 + 随机抖动（避免雪崩）
+ * - 支持 Retry-After 头解析
+ * - 最多重试 maxAttempts 次
+ */
 async function fetchWithRetry(
   input: RequestInfo | URL,
   init: RequestInit,
@@ -457,6 +507,24 @@ function parseJsonTolerant<T>(raw: string): T {
 }
 
 
+/**
+ * 非流式 LLM 调用（核心函数）
+ *
+ * 用于结构化决策场景：投票、技能使用、总结等
+ * 返回完整的响应内容，而非流式片段
+ *
+ * @param options - 调用选项（模型、消息、温度、格式等）
+ * @returns 包含 content（已剥离思考块）、reasoning_details、raw 响应
+ *
+ * 调用链路：
+ * generateCompletion() → fetchWithRetry() → POST /api/chat → LLM Provider
+ *
+ * 使用场景：
+ * - 夜晚行动决策（守卫/狼人/女巫/预言家）
+ * - 投票决策（白天投票/警长投票）
+ * - 特殊事件（猎人开枪/白狼王自爆/警徽移交）
+ * - 每日总结
+ */
 export async function generateCompletion(
   options: GenerateOptions
 ): Promise<{ content: string; reasoning_details?: unknown; raw: ChatCompletionResponse }> {
@@ -645,6 +713,27 @@ export async function generateCompletionBatch(
   });
 }
 
+/**
+ * 流式 LLM 调用（核心函数）
+ *
+ * 用于需要逐字输出的场景：AI 玩家发言
+ * 返回 AsyncGenerator，每次 yield 一个文本片段
+ *
+ * 特殊处理：
+ * - 自动剥离 MiniMax 等模型嵌入的 <think>...</think> 思考块
+ * - 使用状态机处理流式思考块（thinkStripped/thinkBuffer）
+ * - 流式结束后统计 AI 调用（字符数）
+ *
+ * @param options - 调用选项
+ * @returns AsyncGenerator<string>，每次 yield 一个文本片段
+ *
+ * 使用场景：
+ * - 警长竞选发言
+ * - 白天自由讨论发言
+ * - 遗言发言
+ * - PK 发言
+ * - 角色生成（阶段 2）
+ */
 export async function* generateCompletionStream(
   options: GenerateOptions
 ): AsyncGenerator<string, void, unknown> {
@@ -789,6 +878,22 @@ export async function* generateCompletionStream(
   });
 }
 
+/**
+ * JSON 格式的 LLM 调用（核心函数）
+ *
+ * 在 generateCompletion 之上增加：
+ * 1. 自动在 user prompt 末尾添加 JSON 格式要求
+ * 2. 对 zenmux provider 自动启用 json_object 响应格式
+ * 3. 容错解析：多层 fallback 处理不规范的 JSON
+ * 4. 解析失败时自动重试一次（将上次响应作为 assistant 消息，要求修正）
+ *
+ * @param options - 调用选项（可选 schema 字段）
+ * @returns 解析后的 JSON 对象
+ *
+ * 使用场景：
+ * - 角色生成（基础档案 + 完整个人设）
+ * - 游戏复盘分析（发言摘要、MVP/评价/评分）
+ */
 export async function generateJSON<T>(
   options: GenerateOptions & { schema?: string }
 ): Promise<T> {

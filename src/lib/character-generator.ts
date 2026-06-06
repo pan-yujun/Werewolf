@@ -1,3 +1,19 @@
+/**
+ * AI 角色生成器
+ *
+ * 负责在游戏开始前生成 AI 玩家的角色人设
+ *
+ * 生成流程（2 次 LLM 调用）：
+ * 1. 生成基础档案（Base Profiles）— 名字、性别、年龄、MBTI、背景
+ * 2. 生成完整人设（Full Personas）— 性格标签、语言风格、推理风格、压力反应等
+ *
+ * 失败处理：
+ * - 最多重试 2 次
+ * - 超时（30 秒）直接回退到内置角色
+ * - 配额耗尽直接抛出错误
+ * - 最终失败回退到 generateBuiltinCharacters()
+ */
+
 import { generateJSON, generateCompletionStream, stripMarkdownCodeFences } from "./llm";
 import {
   ALL_MODELS,
@@ -436,6 +452,30 @@ const buildFullPersonasPrompt = (scenario: GameScenario, allProfiles: BaseProfil
   });
 };
 
+/**
+ * 生成 AI 角色（主入口函数）
+ *
+ * 分两个阶段，共调用 LLM 2 次：
+ *
+ * 阶段 1 — 生成基础档案（Base Profiles）
+ *   调用: generateJSON()
+ *   模型: GENERATOR_MODEL
+ *   温度: 1.2（WILD）
+ *   输出: [{displayName, gender, age, mbti, basicInfo}, ...]
+ *   超时: 30 秒
+ *
+ * 阶段 2 — 生成完整人设（Full Personas）
+ *   调用: generateCompletionStream()（流式）
+ *   模型: GENERATOR_MODEL
+ *   温度: 1.2（WILD）
+ *   输出: 流式 JSON，逐个角色解析
+ *   每个角色包含: Persona（性格、语言风格等）+ PlayerMind（勇气、记忆偏差等）
+ *
+ * @param count - 需要生成的角色数量
+ * @param scenario - 游戏场景（可选，不传则随机选择）
+ * @param options - 回调选项（onBaseProfiles/onCharacter）
+ * @returns GeneratedCharacter 数组
+ */
 export async function generateCharacters(
   count: number,
   scenario?: GameScenario,
