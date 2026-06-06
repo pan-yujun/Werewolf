@@ -684,7 +684,6 @@ export function useGameLogic() {
         gameLogger.gameRestart();
         setTimeout(() => gameLogger.clearLogs(), 100);
         flowController.current.interrupt();
-        gameSessionTracker.end(null, false).catch(() => {});
         clearPersistedGameState();
         resetDialogueState();
         setInputText("");

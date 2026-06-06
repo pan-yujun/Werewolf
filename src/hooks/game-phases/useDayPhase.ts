@@ -110,6 +110,20 @@ export interface DayPhaseActions {
 }
 
 /**
+ * @function isSpeechLikePhase
+ * @description 判断给定阶段是否属于"发言类"阶段。
+ *
+ * 为什么需要检查阶段类别？
+ * 在 AI 流式发言过程中，游戏阶段可能会发生变化（例如从发言切换到投票）。
+ * 如果阶段已不再是发言类阶段，则应该停止继续处理流式段落，避免在非发言阶段
+ * 错误地显示发言内容。SPEECH_PHASES 包括：DAY_SPEECH、DAY_PK_SPEECH、
+ * DAY_BADGE_SPEECH、DAY_LAST_WORDS 等所有需要 AI/人类发言的阶段。
+ */
+const isSpeechLikePhase = (phase: Phase): boolean => {
+  return PHASE_CATEGORIES.SPEECH_PHASES.includes(phase as typeof PHASE_CATEGORIES.SPEECH_PHASES[number]);
+};
+
+/**
  * @hook useDayPhase
  * @description 白天阶段核心 Hook，管理白天流程中的所有发言相关逻辑。
  *
@@ -140,20 +154,6 @@ export function useDayPhase(
     setAfterLastWords,
     onRecordSpeechSegment,
   } = callbacks;
-
-  /**
-   * @function isSpeechLikePhase
-   * @description 判断给定阶段是否属于"发言类"阶段。
-   *
-   * 为什么需要检查阶段类别？
-   * 在 AI 流式发言过程中，游戏阶段可能会发生变化（例如从发言切换到投票）。
-   * 如果阶段已不再是发言类阶段，则应该停止继续处理流式段落，避免在非发言阶段
-   * 错误地显示发言内容。SPEECH_PHASES 包括：DAY_SPEECH、DAY_PK_SPEECH、
-   * DAY_BADGE_SPEECH、DAY_LAST_WORDS 等所有需要 AI/人类发言的阶段。
-   */
-  const isSpeechLikePhase = (phase: Phase): boolean => {
-    return PHASE_CATEGORIES.SPEECH_PHASES.includes(phase as typeof PHASE_CATEGORIES.SPEECH_PHASES[number]);
-  };
 
   /**
    * @function buildPostSpeechState
@@ -262,7 +262,7 @@ export function useDayPhase(
       );
       const total = state.players.length;
       // 从当前座位 +1 开始循环查找下一个存活候选人
-      let cursor = (state.currentSpeakerSeat ?? -1) + 1;
+      const cursor = (state.currentSpeakerSeat ?? -1) + 1;
       for (let step = 0; step < total; step++) {
         // 使用模运算实现座位号环绕，((x % n) + n) % n 确保正数
         const seat = ((cursor + step) % total + total) % total;
@@ -588,18 +588,28 @@ export function useDayPhase(
     setIsWaitingForAI(true);
     setDialogue(player.displayName, t("dayPhase.organizing"), true);
 
-    // 60 秒超时机制：防止 LLM 响应过慢或无响应导致游戏永久卡死。
-    // 如果 60 秒内未收到任何段落，超时触发，跳过当前发言者进入下一个。
-    // 超时只检查"是否收到首段"，因为首段延迟最能反映 LLM 是否正常响应。
-    const ORGANIZING_TIMEOUT_MS = 60000;
+    // 60秒首包超时，20秒空闲（包距）超时机制：防止 LLM 响应过慢或网络断连导致游戏永久卡死。
+    const FIRST_PACKET_TIMEOUT_MS = 60000;
+    const IDLE_TIMEOUT_MS = 20000;
+    let idleTimer: number | null = null;
+    let resolveTimeoutPromise: (val: "timeout") => void;
+
     const timeoutPromise = new Promise<"timeout">((resolve) => {
-      setTimeout(() => {
-        if (!hasReceivedFirstSegment) {
-          isTimedOut = true;
-          resolve("timeout");
-        }
-      }, ORGANIZING_TIMEOUT_MS);
+      resolveTimeoutPromise = resolve;
     });
+
+    const resetIdleTimer = (timeoutMs: number) => {
+      if (idleTimer !== null) {
+        window.clearTimeout(idleTimer);
+      }
+      idleTimer = window.setTimeout(() => {
+        isTimedOut = true;
+        resolveTimeoutPromise("timeout");
+      }, timeoutMs);
+    };
+
+    // 启动初始超时计时器（首包限时 60 秒）
+    resetIdleTimer(FIRST_PACKET_TIMEOUT_MS);
 
     try {
       // 初始化空的流式发言队列，后续通过 appendToSpeechQueue 逐段追加
@@ -614,6 +624,9 @@ export function useDayPhase(
         onSegmentReceived: (segment, index) => {
           // 如果已超时，忽略后续到达的段落（避免在超时后仍显示内容）
           if (isTimedOut) return;
+
+          // 刷新空闲超时计时器（后续段落限时 20 秒）
+          resetIdleTimer(IDLE_TIMEOUT_MS);
 
           // 检查当前阶段是否仍在发言类（可能在生成过程中阶段已切换到投票等）
           const currentPhase = gameStateRef.current.phase;
@@ -713,23 +726,28 @@ export function useDayPhase(
           if (isTimedOut) return;
 
           // 如果从未收到任何段落，说明生成完全失败，显示中断消息
-          // 如果已经收到了部分段落，则保留已显示的内容，只标记队列完成
+          // 如果已经收到了部分段落，仍必须调用 finalizeSpeechQueue 以关闭发言队列，引导游戏向下一位推进
           if (!hasReceivedFirstSegment) {
             appendToSpeechQueue(t("dayPhase.interrupted"));
-            finalizeSpeechQueue();
           }
+          finalizeSpeechQueue();
         },
       });
 
       // 等待流式生成完成或超时，以先发生者为准
       const result = await Promise.race([streamPromise, timeoutPromise]);
 
-      // 处理超时情况：60 秒内未收到任何段落
+      // 处理超时情况：60秒无首包或中途20秒挂起
       if (result === "timeout") {
-        // gameLogger 记录超时警告，便于调试
-        console.warn(`[wolfcha] runAISpeech: timeout after ${ORGANIZING_TIMEOUT_MS}ms for ${player.displayName}, skipping to next speaker`);
-        // 显示超时提示消息，并标记队列完成以进入下一个发言者
-        appendToSpeechQueue(t("dayPhase.timeout"));
+        if (!hasReceivedFirstSegment) {
+          // gameLogger 记录超时警告，便于调试
+          console.warn(`[wolfcha] runAISpeech: first segment timeout after ${FIRST_PACKET_TIMEOUT_MS}ms for ${player.displayName}, skipping to next speaker`);
+          // 显示超时提示消息
+          appendToSpeechQueue(t("dayPhase.timeout"));
+        } else {
+          console.warn(`[wolfcha] runAISpeech: stream idle timeout after ${IDLE_TIMEOUT_MS}ms for ${player.displayName}, finalizing speech`);
+          // 如果已收到段落，不显示超时消息，只在日志中打印并结束发言，保留已有内容
+        }
         finalizeSpeechQueue();
       }
     } catch {
@@ -739,6 +757,11 @@ export function useDayPhase(
         initSpeechQueue([t("dayPhase.interrupted")], player, options?.afterSpeech as ((s: unknown) => Promise<void>) | undefined);
       }
     } finally {
+      // 清理空闲计时器
+      if (idleTimer !== null) {
+        window.clearTimeout(idleTimer);
+        idleTimer = null;
+      }
       // === 第五步：清理 ===
       // 无论成功、失败还是超时，都必须释放防重入锁
       currentSpeakingPlayerRef.current = null;
@@ -758,8 +781,8 @@ export function useDayPhase(
     prefetchNextAISpeech,
     resolveNextSpeaker,
     buildPostSpeechState,
-    isSpeechLikePhase,
     t,
+    onRecordSpeechSegment,
   ]);
 
   /**
@@ -851,7 +874,7 @@ export function useDayPhase(
         await afterLastWords(s as GameState);
       },
     });
-  }, [setGameState, setDialogue, setWaitingForNextRound, isTokenValid, runAISpeech]);
+  }, [setGameState, setDialogue, setWaitingForNextRound, isTokenValid, runAISpeech, setAfterLastWords, speakerHost, t]);
 
   // 暴露两个核心操作供上层游戏循环（useGameLogic）调用
   return {

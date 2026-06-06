@@ -527,7 +527,25 @@ export function useBadgePhase(
     const alivePlayers = currentState.players.filter((p) => p.alive);
     const human = alivePlayers.find((p) => p.isHuman);
     if (!human) {
-      const nextState = await resolveAIBadgeSignup(currentState);
+      let nextState: GameState;
+      try {
+        nextState = await resolveAIBadgeSignup(currentState);
+      } catch (err) {
+        console.warn("[wolfcha] Failed to resolve AI badge signup in startBadgeSignupPhase, using fallback:", err);
+        const aiPlayers = alivePlayers.filter((p) => !p.isHuman);
+        const fallbackSignup: Record<string, boolean> = {};
+        for (const p of aiPlayers) {
+          fallbackSignup[p.playerId] = false;
+        }
+        nextState = {
+          ...currentState,
+          badge: {
+            ...currentState.badge,
+            signup: { ...currentState.badge.signup, ...fallbackSignup },
+          },
+        };
+        setGameState(nextState);
+      }
       await maybeStartBadgeSpeechAfterSignupRef.current(nextState);
       return;
     }
@@ -601,7 +619,27 @@ export function useBadgePhase(
       },
     };
     setGameState(nextState);
-    nextState = await resolveAIBadgeSignup(nextState);
+    try {
+      nextState = await resolveAIBadgeSignup(nextState);
+    } catch (err) {
+      console.warn("[wolfcha] Failed to resolve AI badge signup in handleBadgeSignup, using fallback:", err);
+      const alivePlayers = nextState.players.filter((p) => p.alive);
+      const aiPlayers = alivePlayers.filter((p) => !p.isHuman);
+      const fallbackSignup: Record<string, boolean> = {};
+      for (const p of aiPlayers) {
+        if (typeof nextState.badge.signup?.[p.playerId] !== "boolean") {
+          fallbackSignup[p.playerId] = false;
+        }
+      }
+      nextState = {
+        ...nextState,
+        badge: {
+          ...nextState.badge,
+          signup: { ...nextState.badge.signup, ...fallbackSignup },
+        },
+      };
+      setGameState(nextState);
+    }
     await maybeStartBadgeSpeechAfterSignup(nextState);
   }, [gameState, setGameState, resolveAIBadgeSignup, maybeStartBadgeSpeechAfterSignup]);
 
@@ -623,9 +661,30 @@ export function useBadgePhase(
     if (!state.players || state.players.length === 0) return;
 
     // 继续跑 AI 报名（仅补齐未决定者）
-    const nextState = await resolveAIBadgeSignup(state);
+    let nextState: GameState;
+    try {
+      nextState = await resolveAIBadgeSignup(state);
+    } catch (err) {
+      console.warn("[wolfcha] Failed to resume AI badge signup, using fallback:", err);
+      const alivePlayers = state.players.filter((p) => p.alive);
+      const aiPlayers = alivePlayers.filter((p) => !p.isHuman);
+      const fallbackSignup: Record<string, boolean> = {};
+      for (const p of aiPlayers) {
+        if (typeof state.badge.signup?.[p.playerId] !== "boolean") {
+          fallbackSignup[p.playerId] = false;
+        }
+      }
+      nextState = {
+        ...state,
+        badge: {
+          ...state.badge,
+          signup: { ...state.badge.signup, ...fallbackSignup },
+        },
+      };
+      setGameState(nextState);
+    }
     await maybeStartBadgeSpeechAfterSignup(nextState);
-  }, [maybeStartBadgeSpeechAfterSignup, resolveAIBadgeSignup]);
+  }, [maybeStartBadgeSpeechAfterSignup, resolveAIBadgeSignup, setGameState]);
 
   /**
    * 开始警长竞选发言阶段

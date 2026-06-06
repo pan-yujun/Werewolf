@@ -250,14 +250,24 @@ async function sleep(ms: number): Promise<void> {
 async function fetchWithRetry(
   input: RequestInfo | URL,
   init: RequestInit,
-  maxAttempts: number
+  maxAttempts: number,
+  timeoutMs: number = 30000
 ): Promise<Response> {
   let lastResponse: Response | null = null;
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timerId = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+
     try {
-      const response = await fetch(input, init);
+      const response = await fetch(input, {
+        ...init,
+        signal: controller.signal,
+      });
+      clearTimeout(timerId);
       lastResponse = response;
 
       if (response.ok) return response;
@@ -274,6 +284,7 @@ async function fetchWithRetry(
         jitter;
       await sleep(backoffMs);
     } catch (err) {
+      clearTimeout(timerId);
       lastError = err;
       if (attempt === maxAttempts) break;
       const base = 400;
