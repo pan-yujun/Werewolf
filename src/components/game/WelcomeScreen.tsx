@@ -1432,12 +1432,12 @@ export function WelcomeScreen({
               >
                 <UsersFour size={14} />
                 <span>{t("customCharacter.entryButton")}</span>
-                {selectedCharacterIds.size > 0 && (
+                {mounted && selectedCharacterIds.size > 0 && (
                   <span className="px-1.5 py-0.5 rounded-full bg-[var(--color-accent)] text-white text-[10px] font-medium">
                     {selectedCharacterIds.size}
                   </span>
                 )}
-                {customCharacters.characters.length > 0 && selectedCharacterIds.size === 0 && (
+                {mounted && customCharacters.characters.length > 0 && selectedCharacterIds.size === 0 && (
                   <span className="px-1.5 py-0.5 rounded-full bg-[var(--text-muted)]/20 text-[var(--text-muted)] text-[10px] font-medium">
                     {customCharacters.characters.length}
                   </span>
