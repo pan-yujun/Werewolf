@@ -20,6 +20,7 @@ import {
   getMinimaxGroupId,
   getMimoApiKey,
   getModelscopeApiKey,
+  getVolcengineApiKey,
   getSelectedModels,
   getSummaryModel,
   getReviewModel,
@@ -28,11 +29,13 @@ import {
   getValidatedDashscopeKey,
   getValidatedMimoKey,
   getValidatedModelscopeKey,
+  getValidatedVolcengineKey,
   setGeneratorModel,
   setMinimaxApiKey,
   setMinimaxGroupId,
   setMimoApiKey,
   setModelscopeApiKey,
+  setVolcengineApiKey,
   setSelectedModels,
   setSummaryModel,
   setReviewModel,
@@ -44,6 +47,7 @@ import {
   setValidatedDashscopeKey,
   setValidatedMimoKey,
   setValidatedModelscopeKey,
+  setValidatedVolcengineKey,
   isCustomKeyEnabled as getCustomKeyEnabled,
 } from "@/lib/api-keys";
 import { getModelLogoPath } from "@/lib/model-logo";
@@ -57,6 +61,7 @@ import {
   GENERATOR_MODEL,
   MIMO_VALIDATION_MODEL,
   MODELSCOPE_VALIDATION_MODEL,
+  VOLCENGINE_VALIDATION_MODEL,
   ZENMUX_VALIDATION_MODEL,
   SUMMARY_MODEL,
   REVIEW_MODEL,
@@ -107,12 +112,14 @@ export function UserProfileContent({
   const [dashscopeKey, setDashscopeKeyState] = useState("");
   const [mimoKey, setMimoKeyState] = useState("");
   const [modelscopeKey, setModelscopeKeyState] = useState("");
+  const [volcengineKey, setVolcengineKeyState] = useState("");
   const [minimaxKey, setMinimaxKeyState] = useState("");
   const [minimaxGroupId, setMinimaxGroupIdState] = useState("");
   const [showZenmuxKey, setShowZenmuxKey] = useState(false);
   const [showDashscopeKey, setShowDashscopeKey] = useState(false);
   const [showMimoKey, setShowMimoKey] = useState(false);
   const [showModelscopeKey, setShowModelscopeKey] = useState(false);
+  const [showVolcengineKey, setShowVolcengineKey] = useState(false);
   const [showMinimaxKey, setShowMinimaxKey] = useState(false);
   const [showMinimaxGroupId, setShowMinimaxGroupId] = useState(false);
   const [isCustomKeyEnabled, setIsCustomKeyEnabled] = useState(false);
@@ -125,11 +132,13 @@ export function UserProfileContent({
   const [isValidatingDashscope, setIsValidatingDashscope] = useState(false);
   const [isValidatingMimo, setIsValidatingMimo] = useState(false);
   const [isValidatingModelscope, setIsValidatingModelscope] = useState(false);
-  const [validatedKeys, setValidatedKeys] = useState<{ zenmux: string; dashscope: string; mimo: string; modelscope: string }>({
+  const [isValidatingVolcengine, setIsValidatingVolcengine] = useState(false);
+  const [validatedKeys, setValidatedKeys] = useState<{ zenmux: string; dashscope: string; mimo: string; modelscope: string; volcengine: string }>({
     zenmux: "",
     dashscope: "",
     mimo: "",
     modelscope: "",
+    volcengine: "",
   });
   const [fetchedModels, setFetchedModels] = useState<Record<string, string[]>>({});
   const [isFetchingModels, setIsFetchingModels] = useState<Record<string, boolean>>({});
@@ -161,6 +170,7 @@ export function UserProfileContent({
     let d = getDashscopeApiKey();
     let m = getMimoApiKey();
     let ms = getModelscopeApiKey();
+    let ve = getVolcengineApiKey();
     const nextMinimaxKey = getMinimaxApiKey();
     const nextMinimaxGroupId = getMinimaxGroupId();
     const nextSelectedModels = getSelectedModels();
@@ -174,6 +184,7 @@ export function UserProfileContent({
       setDashscopeKeyState(d);
       setMimoKeyState(m);
       setModelscopeKeyState(ms);
+      setVolcengineKeyState(ve);
       setMinimaxKeyState(nextMinimaxKey);
       setMinimaxGroupIdState(nextMinimaxGroupId);
       setSelectedModelsState(nextSelectedModels);
@@ -186,6 +197,7 @@ export function UserProfileContent({
         dashscope: d && getValidatedDashscopeKey() === d ? d : "",
         mimo: m && getValidatedMimoKey() === m ? m : "",
         modelscope: ms && getValidatedModelscopeKey() === ms ? ms : "",
+        volcengine: ve && getValidatedVolcengineKey() === ve ? ve : "",
       });
       // Restore fetched models from localStorage
       const storedFetched = getFetchedModels();
@@ -228,6 +240,7 @@ export function UserProfileContent({
   const dashscopeConfigured = Boolean(dashscopeKey.trim());
   const mimoConfigured = Boolean(mimoKey.trim());
   const modelscopeConfigured = Boolean(modelscopeKey.trim());
+  const volcengineConfigured = Boolean(volcengineKey.trim());
   const modelPool = useMemo(() => {
     return ALL_MODELS;
   }, []);
@@ -240,6 +253,7 @@ export function UserProfileContent({
     if (dashscopeConfigured) providers.add("dashscope");
     if (mimoConfigured) providers.add("mimo");
     if (modelscopeConfigured) providers.add("modelscope");
+    if (volcengineConfigured) providers.add("volcengine");
     if (providers.size === 0) return [];
 
     // Start with hardcoded models from ALL_MODELS
@@ -273,16 +287,17 @@ export function UserProfileContent({
       // If verification results exist, only keep verified models
       return providerResults[ref.model] !== false;
     });
-  }, [dashscopeConfigured, mimoConfigured, modelscopeConfigured, modelPool, zenmuxConfigured, fetchedModels, verifiedModels]);
+  }, [dashscopeConfigured, mimoConfigured, modelscopeConfigured, volcengineConfigured, modelPool, zenmuxConfigured, fetchedModels, verifiedModels]);
   const defaultAvailableModels = useMemo(() => {
     const providers = new Set<ModelRef["provider"]>();
     if (zenmuxConfigured) providers.add("zenmux");
     if (dashscopeConfigured) providers.add("dashscope");
     if (mimoConfigured) providers.add("mimo");
     if (modelscopeConfigured) providers.add("modelscope");
+    if (volcengineConfigured) providers.add("volcengine");
     if (providers.size === 0) return [];
     return defaultModelPool.filter((ref) => providers.has(ref.provider));
-  }, [dashscopeConfigured, defaultModelPool, mimoConfigured, modelscopeConfigured, zenmuxConfigured]);
+  }, [dashscopeConfigured, defaultModelPool, mimoConfigured, modelscopeConfigured, volcengineConfigured, zenmuxConfigured]);
   const playerModelPool = useMemo(() => {
     return filterPlayerModels(availableModelPool);
   }, [availableModelPool]);
@@ -378,7 +393,8 @@ export function UserProfileContent({
       const zenmuxOk = !zenmuxKey.trim() || validatedKeys.zenmux === zenmuxKey.trim();
       const dashscopeOk = !dashscopeKey.trim() || validatedKeys.dashscope === dashscopeKey.trim();
       const mimoOk = !mimoKey.trim() || validatedKeys.mimo === mimoKey.trim();
-      if (!zenmuxOk || !dashscopeOk || !mimoOk) {
+      const volcengineOk = !volcengineKey.trim() || validatedKeys.volcengine === volcengineKey.trim();
+      if (!zenmuxOk || !dashscopeOk || !mimoOk || !volcengineOk) {
         toast(t("customKey.toasts.notValidated"), { description: t("customKey.toasts.notValidatedDesc") });
         return;
       }
@@ -419,6 +435,7 @@ export function UserProfileContent({
     setDashscopeApiKey(dashscopeKey);
     setMimoApiKey(mimoKey);
     setModelscopeApiKey(modelscopeKey);
+    setVolcengineApiKey(volcengineKey);
     setMinimaxApiKey(minimaxKey);
     setMinimaxGroupId(minimaxGroupId);
     setSelectedModels(nextSelectedModels);
@@ -429,12 +446,14 @@ export function UserProfileContent({
     setGeneratorModelState(nextGeneratorModel);
     setSummaryModelState(nextSummaryModel);
     setReviewModelState(nextReviewModel);
+    // 通知其他组件模型池已更新（WelcomeScreen 等监听此事件）
+    window.dispatchEvent(new Event("wolfcha-model-pool-changed"));
     toast(t("customKey.toasts.saved"), { description: t("customKey.toasts.savedDesc") });
     onSave?.();
   };
 
   const validateProviderKey = async (options: {
-    provider: "zenmux" | "dashscope" | "mimo" | "modelscope";
+    provider: "zenmux" | "dashscope" | "mimo" | "modelscope" | "volcengine";
     key: string;
     model: string;
   }) => {
@@ -450,6 +469,8 @@ export function UserProfileContent({
       headers["X-Mimo-Api-Key"] = key;
     } else if (provider === "modelscope") {
       headers["X-Modelscope-Api-Key"] = key;
+    } else if (provider === "volcengine") {
+      headers["X-Volcengine-Api-Key"] = key;
     }
 
     const response = await fetch("/api/validate-key", {
@@ -562,12 +583,35 @@ export function UserProfileContent({
     }
   };
 
+  const handleValidateVolcengine = async () => {
+    if (isValidatingVolcengine || !volcengineKey.trim()) return;
+    setIsValidatingVolcengine(true);
+    try {
+      await validateProviderKey({
+        provider: "volcengine",
+        key: volcengineKey.trim(),
+        model: VOLCENGINE_VALIDATION_MODEL,
+      });
+      setValidatedKeys((prev) => ({ ...prev, volcengine: volcengineKey.trim() }));
+      setValidatedVolcengineKey(volcengineKey.trim());
+    } catch (error) {
+      setValidatedKeys((prev) => ({ ...prev, volcengine: "" }));
+      if (volcengineKey.trim() === getValidatedVolcengineKey()) setValidatedVolcengineKey("");
+      toast(t("customKey.toasts.validateFailed"), {
+        description: t("customKey.toasts.validateFailedDesc"),
+      });
+    } finally {
+      setIsValidatingVolcengine(false);
+    }
+  };
+
   const handleClearKeys = () => {
     clearApiKeys();
     setZenmuxKeyState("");
     setDashscopeKeyState("");
     setMimoKeyState("");
     setModelscopeKeyState("");
+    setVolcengineKeyState("");
     setMinimaxKeyState("");
     setMinimaxGroupIdState("");
     setSelectedModelsState([]);
@@ -575,7 +619,7 @@ export function UserProfileContent({
     setSummaryModelState(getSummaryModel());
     setReviewModelState(getReviewModel());
     setIsCustomKeyEnabled(false);
-    setValidatedKeys({ zenmux: "", dashscope: "", mimo: "", modelscope: "" });
+    setValidatedKeys({ zenmux: "", dashscope: "", mimo: "", modelscope: "", volcengine: "" });
     onCustomKeyEnabledChange?.(false);
     toast(t("customKey.toasts.cleared"));
   };
@@ -1277,6 +1321,78 @@ export function UserProfileContent({
                     </div>
                   )}
                 </div>
+
+                <div className="border-t border-[var(--border-color)] pt-3 space-y-2">
+                  <Label htmlFor="volcengine-key" className="text-xs">{t("customKey.volcengine.label")}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="volcengine-key"
+                      name="wolfcha-volcengine-api-key"
+                      type={showVolcengineKey ? "text" : "password"}
+                      autoComplete="new-password"
+                      placeholder={t("customKey.volcengine.placeholder")}
+                      value={volcengineKey}
+                      onChange={(e) => {
+                        setVolcengineKeyState(e.target.value);
+                        setValidatedKeys((prev) => ({ ...prev, volcengine: "" }));
+                      }}
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowVolcengineKey((v) => !v)} aria-label={showVolcengineKey ? t("customKey.volcengine.hide") : t("customKey.volcengine.show")}>
+                      {showVolcengineKey ? <EyeSlash size={16} /> : <Eye size={16} />}
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={handleValidateVolcengine} disabled={isValidatingVolcengine || !volcengineKey.trim() || (!!validatedKeys.volcengine && validatedKeys.volcengine === volcengineKey.trim())}>
+                      {isValidatingVolcengine ? t("customKey.validating") : validatedKeys.volcengine && validatedKeys.volcengine === volcengineKey.trim() ? <Check size={16} className="text-[var(--color-success)]" /> : t("customKey.validate")}
+                    </Button>
+                  </div>
+                  <a href="https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] px-2.5 py-2 transition-colors hover:bg-[var(--bg-hover)]">
+                    <img src="/models/doubao.svg" alt="" className="h-6 w-6 shrink-0 rounded object-contain" />
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-medium text-[var(--text-primary)]">{t("customKey.volcengine.get")}</span>
+                      <span className="text-[11px] text-[var(--text-muted)] ml-1.5">{t("customKey.volcengine.note")}</span>
+                    </div>
+                    <ArrowRight size={14} className="shrink-0 text-[var(--text-muted)]" />
+                  </a>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => fetchProviderModels("volcengine", volcengineKey.trim())}
+                    disabled={isFetchingModels.volcengine || !volcengineKey.trim()}
+                  >
+                    {isFetchingModels.volcengine ? t("customKey.fetchModels.loading") : t("customKey.fetchModels.button")}
+                  </Button>
+                  {fetchedModels.volcengine && fetchedModels.volcengine.length > 0 && (
+                    <div className="space-y-1">
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                        onClick={() => setExpandedModelList((prev) => ({ ...prev, volcengine: !prev.volcengine }))}
+                      >
+                        <CaretDown size={12} className={`transition-transform ${expandedModelList.volcengine ? "" : "-rotate-90"}`} />
+                        {t("customKey.fetchModels.available", { count: fetchedModels.volcengine.length })}
+                      </button>
+                      {expandedModelList.volcengine && (
+                        <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 space-y-0.5">
+                          {isVerifyingModels.volcengine && <div className="text-xs text-[var(--text-muted)] py-1">{t("customKey.fetchModels.verifying")}</div>}
+                          {fetchedModels.volcengine.map((modelId) => {
+                            const verified = verifiedModels.volcengine?.[modelId];
+                            const unverified = verifiedModels.volcengine && !verified;
+                            return (
+                              <div key={modelId} className={`flex items-center gap-2 text-xs py-0.5 ${unverified ? "opacity-40 line-through" : "text-[var(--text-secondary)]"}`}>
+                                <img src={getModelLogoPath({ provider: "volcengine", model: modelId })} alt="" className="w-3.5 h-3.5 rounded-sm" />
+                                <span className="truncate flex-1">{modelId}</span>
+                                {verified && <span className="text-[var(--color-success)] text-[10px]">✓</span>}
+                                {unverified && <span className="text-[var(--text-muted)] text-[10px]">✗</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </section>
 
               {/* 3. Model config */}
@@ -1297,7 +1413,7 @@ export function UserProfileContent({
                         <SelectTrigger id="generator-model"><SelectValue placeholder={t("customKey.selectModel")} /></SelectTrigger>
                         <SelectContent className="max-h-60">
                           {availableModelPool.map((r) => (
-                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider} icon={getModelLogoPath(r)} />
+                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider === "volcengine" ? t("customKey.volcengine.short") : r.provider} icon={getModelLogoPath(r)} />
                           ))}
                         </SelectContent>
                       </Select>
@@ -1311,7 +1427,7 @@ export function UserProfileContent({
                         <SelectTrigger id="summary-model"><SelectValue placeholder={t("customKey.selectModel")} /></SelectTrigger>
                         <SelectContent className="max-h-60">
                           {availableModelPool.map((r) => (
-                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider} icon={getModelLogoPath(r)} />
+                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider === "volcengine" ? t("customKey.volcengine.short") : r.provider} icon={getModelLogoPath(r)} />
                           ))}
                         </SelectContent>
                       </Select>
@@ -1325,7 +1441,7 @@ export function UserProfileContent({
                         <SelectTrigger id="review-model"><SelectValue placeholder={t("customKey.selectModel")} /></SelectTrigger>
                         <SelectContent className="max-h-60">
                           {availableModelPool.map((r) => (
-                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider} icon={getModelLogoPath(r)} />
+                            <SelectItem key={`${r.provider}:${r.model}`} value={r.model} label={r.model} description={r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider === "volcengine" ? t("customKey.volcengine.short") : r.provider} icon={getModelLogoPath(r)} />
                           ))}
                         </SelectContent>
                       </Select>
@@ -1359,7 +1475,7 @@ export function UserProfileContent({
                           >
                             <img src={getModelLogoPath(r)} alt="" className="h-4 w-4 shrink-0 rounded object-contain" />
                             <span className="min-w-0 flex-1 truncate text-[var(--text-primary)]">{r.model}</span>
-                            <span className="shrink-0 text-xs text-[var(--text-muted)]">({r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider})</span>
+                            <span className="shrink-0 text-xs text-[var(--text-muted)]">({r.provider === "zenmux" ? "Zenmux" : r.provider === "dashscope" ? t("customKey.dashscope.short") : r.provider === "mimo" ? "Mimo" : r.provider === "modelscope" ? t("customKey.modelscope.short") : r.provider === "volcengine" ? t("customKey.volcengine.short") : r.provider})</span>
                           </DropdownMenuCheckboxItem>
                         ))}
                       </DropdownMenuContent>

@@ -20,7 +20,7 @@
  * - JSON 容错解析（处理 LLM 返回的不规范 JSON）
  */
 
-import { getDashscopeApiKey, getMimoApiKey, getModelscopeApiKey, getZenmuxApiKey, isCustomKeyEnabled } from "@/lib/api-keys";
+import { getDashscopeApiKey, getMimoApiKey, getModelscopeApiKey, getVolcengineApiKey, getZenmuxApiKey, isCustomKeyEnabled } from "@/lib/api-keys";
 import { ALL_MODELS, AVAILABLE_MODELS, PROJECT_MODELS, type ModelRef } from "@/types/game";
 import { gameStatsTracker } from "@/hooks/useGameStats";
 import { gameSessionTracker } from "@/lib/game-session-tracker";
@@ -44,7 +44,7 @@ export interface LLMMessage {
 }
 
 /** 支持的 LLM 提供商类型 */
-type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope";
+type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope" | "volcengine";
 
 /** 类型守卫：检查值是否为普通对象 */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,6 +100,9 @@ export function resolveApiKeySource(model: string): ApiKeySource {
    }
    if (provider === "modelscope") {
      return getModelscopeApiKey() ? "user" : "project";
+   }
+   if (provider === "volcengine") {
+     return getVolcengineApiKey() ? "user" : "project";
    }
    return getZenmuxApiKey() ? "user" : "project";
  }
@@ -549,6 +552,7 @@ export async function generateCompletion(
   const dashscopeApiKey = customEnabled ? getDashscopeApiKey() : "";
   const mimoApiKey = customEnabled ? getMimoApiKey() : "";
   const modelscopeApiKey = customEnabled ? getModelscopeApiKey() : "";
+  const volcengineApiKey = customEnabled ? getVolcengineApiKey() : "";
   const modelToUse = customEnabled
     ? options.model
     : resolveModelForBuiltin(options.model);
@@ -566,6 +570,9 @@ export async function generateCompletion(
   }
   if (modelscopeApiKey) {
     headers["X-Modelscope-Api-Key"] = modelscopeApiKey;
+  }
+  if (volcengineApiKey) {
+    headers["X-Volcengine-Api-Key"] = volcengineApiKey;
   }
 
   Object.assign(headers, await getAuthHeaders());
@@ -662,6 +669,7 @@ export async function generateCompletionBatch(
   const dashscopeApiKey = customEnabled ? getDashscopeApiKey() : "";
   const mimoApiKey = customEnabled ? getMimoApiKey() : "";
   const modelscopeApiKey = customEnabled ? getModelscopeApiKey() : "";
+  const volcengineApiKey = customEnabled ? getVolcengineApiKey() : "";
   const resolvedRequests = customEnabled
     ? requests
     : requests.map((r) => ({ ...r, model: resolveModelForBuiltin(r.model) }));
@@ -679,6 +687,9 @@ export async function generateCompletionBatch(
   }
   if (modelscopeApiKey) {
     headers["X-Modelscope-Api-Key"] = modelscopeApiKey;
+  }
+  if (volcengineApiKey) {
+    headers["X-Volcengine-Api-Key"] = volcengineApiKey;
   }
 
   Object.assign(headers, await getAuthHeaders());
@@ -758,6 +769,7 @@ export async function* generateCompletionStream(
   const dashscopeApiKey = customEnabled ? getDashscopeApiKey() : "";
   const mimoApiKey = customEnabled ? getMimoApiKey() : "";
   const modelscopeApiKey = customEnabled ? getModelscopeApiKey() : "";
+  const volcengineApiKey = customEnabled ? getVolcengineApiKey() : "";
   const modelToUse = customEnabled
     ? options.model
     : resolveModelForBuiltin(options.model);
@@ -775,6 +787,9 @@ export async function* generateCompletionStream(
   }
   if (modelscopeApiKey) {
     headers["X-Modelscope-Api-Key"] = modelscopeApiKey;
+  }
+  if (volcengineApiKey) {
+    headers["X-Volcengine-Api-Key"] = volcengineApiKey;
   }
 
   Object.assign(headers, await getAuthHeaders());

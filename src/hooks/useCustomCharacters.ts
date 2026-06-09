@@ -127,7 +127,7 @@ export function useCustomCharacters(user: User | null) {
 
       if (insertError) throw insertError;
 
-      const newChar = data as CustomCharacter;
+      const newChar = { ...(data as CustomCharacter), avatar_seed: avatarSeed };
       setCharacters(prev => [newChar, ...prev]);
       return newChar;
     } catch (err) {

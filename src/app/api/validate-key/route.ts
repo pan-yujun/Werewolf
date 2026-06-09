@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DASHSCOPE_VALIDATION_MODEL, MIMO_VALIDATION_MODEL, MODELSCOPE_VALIDATION_MODEL, ZENMUX_VALIDATION_MODEL } from "@/types/game";
+import { DASHSCOPE_VALIDATION_MODEL, MIMO_VALIDATION_MODEL, MODELSCOPE_VALIDATION_MODEL, VOLCENGINE_VALIDATION_MODEL, ZENMUX_VALIDATION_MODEL } from "@/types/game";
 
 const ZENMUX_API_URL = "https://zenmux.ai/api/v1/chat/completions";
 const DASHSCOPE_CHAT_COMPLETIONS_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const MIMO_DEFAULT_API_URL = "https://api.mimo.xiaomi.com/v1/chat/completions";
 const MODELSCOPE_CHAT_COMPLETIONS_URL = "https://api-inference.modelscope.cn/v1/chat/completions";
+const VOLCENGINE_DEFAULT_API_URL = "https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions";
+
+function getVolcengineUrl(): string {
+  const envBase = process.env.VOLCENGINE_BASE_URL?.trim();
+  if (!envBase) return VOLCENGINE_DEFAULT_API_URL;
+  if (envBase.includes("/chat/completions")) return envBase;
+  const withoutTrailingSlash = envBase.replace(/\/+$/, "");
+  return `${withoutTrailingSlash}/chat/completions`;
+}
 
 const VALIDATION_TIMEOUT_MS = 15000;
 
@@ -16,7 +25,7 @@ function getMimoUrl(): string {
   return `${withoutTrailingSlash}/chat/completions`;
 }
 
-type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope";
+type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope" | "volcengine";
 
 interface ValidationResult {
   provider: Provider;
@@ -532,6 +541,103 @@ async function validateModelscopeKey(apiKey: string): Promise<ValidationResult> 
   }
 }
 
+async function validateVolcengineKey(apiKey: string): Promise<ValidationResult> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(getVolcengineUrl(), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: VOLCENGINE_VALIDATION_MODEL,
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 1,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      return { provider: "volcengine", valid: true };
+    }
+
+    const errorText = await response.text().catch(() => "");
+    let errorCode = "";
+    let errorMessage = "";
+
+    try {
+      const errorJson = JSON.parse(errorText);
+      errorCode = errorJson?.error?.code || errorJson?.code || "";
+      errorMessage = errorJson?.error?.message || errorJson?.message || "";
+    } catch {
+      errorMessage = errorText;
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        provider: "volcengine",
+        valid: false,
+        error: "火山引擎 API Key 无效或已过期",
+        errorCode: "invalid_key",
+      };
+    }
+
+    if (response.status === 402 || response.status === 429) {
+      const isQuotaError =
+        errorCode.includes("insufficient") ||
+        errorCode.includes("quota") ||
+        errorCode.includes("balance") ||
+        errorMessage.includes("insufficient") ||
+        errorMessage.includes("quota") ||
+        errorMessage.includes("余额");
+
+      if (isQuotaError || response.status === 402) {
+        return {
+          provider: "volcengine",
+          valid: false,
+          error: "火山引擎 API 额度不足，请前往火山引擎控制台充值",
+          errorCode: "insufficient_quota",
+        };
+      }
+
+      return {
+        provider: "volcengine",
+        valid: false,
+        error: "请求频率超限，请稍后再试",
+        errorCode: "rate_limit",
+      };
+    }
+
+    return {
+      provider: "volcengine",
+      valid: false,
+      error: `验证失败: ${response.status} - ${errorMessage || errorText}`,
+      errorCode: "unknown",
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        provider: "volcengine",
+        valid: false,
+        error: "验证超时，请检查网络连接",
+        errorCode: "timeout",
+      };
+    }
+    return {
+      provider: "volcengine",
+      valid: false,
+      error: `网络错误: ${String(error)}`,
+      errorCode: "network_error",
+    };
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const zenmuxKey = request.headers.get("x-zenmux-api-key")?.trim() || "";
@@ -540,8 +646,9 @@ export async function POST(request: NextRequest) {
     const tokendanceBaseUrl = request.headers.get("x-tokendance-base-url")?.trim() || "";
     const mimoKey = request.headers.get("x-mimo-api-key")?.trim() || "";
     const modelscopeKey = request.headers.get("x-modelscope-api-key")?.trim() || "";
+    const volcengineKey = request.headers.get("x-volcengine-api-key")?.trim() || "";
 
-    if (!zenmuxKey && !dashscopeKey && !tokendanceKey && !mimoKey && !modelscopeKey) {
+    if (!zenmuxKey && !dashscopeKey && !tokendanceKey && !mimoKey && !modelscopeKey && !volcengineKey) {
       return NextResponse.json(
         { error: "未提供任何 API Key", valid: false },
         { status: 400 }
@@ -572,6 +679,9 @@ export async function POST(request: NextRequest) {
     }
     if (modelscopeKey) {
       validationPromises.push(validateModelscopeKey(modelscopeKey));
+    }
+    if (volcengineKey) {
+      validationPromises.push(validateVolcengineKey(volcengineKey));
     }
 
     const settled = await Promise.all(validationPromises);

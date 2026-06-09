@@ -6,6 +6,14 @@ const PROVIDER_CHAT_URL: Record<string, string> = {
   dashscope: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
 };
 
+function getVolcengineChatUrl(): string {
+  const envBase = process.env.VOLCENGINE_BASE_URL?.trim();
+  if (!envBase) return "https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions";
+  if (envBase.includes("/chat/completions")) return envBase;
+  const withoutTrailingSlash = envBase.replace(/\/+$/, "");
+  return `${withoutTrailingSlash}/chat/completions`;
+}
+
 function getMimoChatUrl(): string {
   const envBase = process.env.MIMO_API_BASE_URL?.trim();
   if (!envBase) return "https://api.mimo.xiaomi.com/v1/chat/completions";

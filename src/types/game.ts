@@ -73,7 +73,7 @@ export type Alignment = "village" | "wolf";
  }
 
 export interface ModelRef {
-  provider: "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope";
+  provider: "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope" | "volcengine";
   model: string;
   /** Override call-time temperature for this model (e.g. some models only support 1) */
   temperature?: number;
@@ -308,6 +308,19 @@ export const MODEL_IDS = {
     minimaxM27: "MiniMax/MiniMax-M2.7",
     mimoV2: "XiaomiMiMo/MiMo-V2-Flash",
   },
+  volcengine: {
+    deepseekV32: "deepseek-v3.2",
+    deepseekV4Flash: "deepseek-v4-flash",
+    deepseekV4Pro: "deepseek-v4-pro",
+    minimaxM27: "minimax-m2.7",
+    minimaxM3: "minimax-m3",
+    glm51: "glm-5.1",
+    kimiK26: "kimi-k2.6",
+    doubaoSeed2Code: "doubao-seed-2.0-code",
+    doubaoSeed2Pro: "doubao-seed-2.0-pro",
+    doubaoSeed2Lite: "doubao-seed-2.0-lite",
+    doubaoSeed2Mini: "doubao-seed-2.0-mini",
+  },
 } as const;
 
 const BUILTIN_DEEPSEEK_V4_PRO_MODEL: ModelRef = {
@@ -334,6 +347,7 @@ export const DEFAULT_MODEL_CONFIG = {
     dashscope: MODEL_IDS.dashscope.deepseek,
     mimo: MODEL_IDS.mimo.mimoV25,
     modelscope: MODEL_IDS.modelscope.deepseekV4Flash,
+    volcengine: MODEL_IDS.volcengine.deepseekV4Flash,
   },
 } as const;
 
@@ -345,6 +359,7 @@ export const ZENMUX_VALIDATION_MODEL = DEFAULT_MODEL_CONFIG.validation.zenmux;
 export const DASHSCOPE_VALIDATION_MODEL = DEFAULT_MODEL_CONFIG.validation.dashscope;
 export const MIMO_VALIDATION_MODEL = DEFAULT_MODEL_CONFIG.validation.mimo;
 export const MODELSCOPE_VALIDATION_MODEL = DEFAULT_MODEL_CONFIG.validation.modelscope;
+export const VOLCENGINE_VALIDATION_MODEL = DEFAULT_MODEL_CONFIG.validation.volcengine;
 
 export const BUILTIN_PLAYER_MODELS: ModelRef[] = USE_MIMO_DEFAULT
   ? [BUILTIN_MIMO_MODEL]
@@ -365,6 +380,7 @@ export const PROJECT_MODELS: ModelRef[] = [
   { provider: "zenmux", model: MODEL_IDS.zenmux.geminiFlashLite },
   { provider: "mimo", model: MODEL_IDS.mimo.mimoV25 },
   { provider: "modelscope", model: MODEL_IDS.modelscope.deepseekV4Flash },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.deepseekV4Flash },
 ];
 
 // User-selectable models when custom key is enabled.
@@ -391,6 +407,17 @@ export const ALL_MODELS: ModelRef[] = [
   { provider: "modelscope", model: MODEL_IDS.modelscope.glm5 },
   { provider: "modelscope", model: MODEL_IDS.modelscope.kimiK25 },
   { provider: "modelscope", model: MODEL_IDS.modelscope.mimoV2 },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.deepseekV32 },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.deepseekV4Flash },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.deepseekV4Pro },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.minimaxM27 },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.minimaxM3 },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.glm51 },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.kimiK26 },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.doubaoSeed2Code },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.doubaoSeed2Pro },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.doubaoSeed2Lite },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.doubaoSeed2Mini },
 ];
 
 // Models not allowed for in-game players (summary & generation only).

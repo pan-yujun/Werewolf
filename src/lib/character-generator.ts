@@ -26,7 +26,7 @@ import {
   type Persona,
   type PlayerMind,
 } from "@/types/game";
-import { getFetchedModels, getGeneratorModel, getSelectedModels, hasDashscopeKey, hasMimoKey, hasModelscopeKey, hasZenmuxKey, isCustomKeyEnabled } from "@/lib/api-keys";
+import { getFetchedModels, getGeneratorModel, getSelectedModels, hasDashscopeKey, hasMimoKey, hasModelscopeKey, hasVolcengineKey, hasZenmuxKey, isCustomKeyEnabled } from "@/lib/api-keys";
 import { aiLogger } from "./ai-logger";
 import { GAME_TEMPERATURE } from "./ai-config";
 import { getRandomScenario } from "./scenarios";
@@ -96,6 +96,7 @@ export const getAvailablePlayerModelPool = (): ModelRef[] => {
   if (hasDashscopeKey()) allowedProviders.add("dashscope");
   if (hasMimoKey()) allowedProviders.add("mimo");
   if (hasModelscopeKey()) allowedProviders.add("modelscope");
+  if (hasVolcengineKey()) allowedProviders.add("volcengine");
   if (allowedProviders.size === 0) return defaultPool;
 
   const fetched = getFetchedModels();

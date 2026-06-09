@@ -2146,7 +2146,7 @@
     "validate": "Validate",
     "llmKey": {
       "title": "Language Model Key",
-      "description": "Configure at least one of Zenmux, Dashscope, or ModelScope for gameplay and character generation"
+      "description": "Configure at least one of Zenmux, Dashscope, ModelScope, or Volcengine for gameplay and character generation"
     },
     "zenmux": {
       "label": "Zenmux API Key",
@@ -2179,6 +2179,15 @@
       "get": "Get ModelScope Token",
       "note": "Qwen / DeepSeek / GLM open-source models",
       "short": "ModelScope"
+    },
+    "volcengine": {
+      "label": "Volcengine API Key",
+      "placeholder": "Optional: Volcengine (Doubao)",
+      "hide": "Hide Volcengine API Key",
+      "show": "Show Volcengine API Key",
+      "get": "Get Volcengine Key",
+      "note": "Doubao series models",
+      "short": "Volcengine"
     },
     "modelConfig": {
       "title": "Model Configuration",

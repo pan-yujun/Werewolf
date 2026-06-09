@@ -6,6 +6,14 @@ const PROVIDER_MODELS_URL: Record<string, string> = {
   dashscope: "https://dashscope.aliyuncs.com/compatible-mode/v1/models",
 };
 
+function getVolcengineModelsUrl(): string {
+  const envBase = process.env.VOLCENGINE_BASE_URL?.trim();
+  if (!envBase) return "https://ark.cn-beijing.volces.com/api/plan/v3/models";
+  const withoutTrailingSlash = envBase.replace(/\/+$/, "");
+  const baseUrl = withoutTrailingSlash.replace(/\/chat\/completions$/, "");
+  return `${baseUrl}/models`;
+}
+
 function getMimoModelsUrl(): string {
   const envBase = process.env.MIMO_API_BASE_URL?.trim();
   if (!envBase) return "https://api.mimo.xiaomi.com/v1/models";

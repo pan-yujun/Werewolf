@@ -2236,7 +2236,7 @@
     "validate": "验证",
     "llmKey": {
       "title": "语言模型 Key",
-      "description": "至少配置 Zenmux、百炼或魔搭其一，用于对局与人物生成"
+      "description": "至少配置 Zenmux、百炼、魔搭或火山引擎其一，用于对局与人物生成"
     },
     "zenmux": {
       "label": "Zenmux API Key",
@@ -2269,6 +2269,15 @@
       "get": "获取魔搭 Token",
       "note": "Qwen / DeepSeek / GLM 等开源模型",
       "short": "魔搭"
+    },
+    "volcengine": {
+      "label": "火山引擎 API Key",
+      "placeholder": "可选：火山引擎（豆包）",
+      "hide": "隐藏火山引擎 API Key",
+      "show": "显示火山引擎 API Key",
+      "get": "获取火山引擎 Key",
+      "note": "豆包系列模型",
+      "short": "火山引擎"
     },
     "modelConfig": {
       "title": "模型配置",

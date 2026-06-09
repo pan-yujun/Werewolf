@@ -12,11 +12,20 @@ const DASHSCOPE_API_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v
 const DASHSCOPE_CHAT_COMPLETIONS_URL = `${DASHSCOPE_API_BASE_URL}/chat/completions`;
 const MIMO_DEFAULT_API_URL = "https://api.mimo.xiaomi.com/v1/chat/completions";
 const MODELSCOPE_CHAT_COMPLETIONS_URL = "https://api-inference.modelscope.cn/v1/chat/completions";
+const VOLCENGINE_DEFAULT_API_URL = "https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions";
+
+function getVolcengineUrl(): string {
+  const envBase = process.env.VOLCENGINE_BASE_URL?.trim();
+  if (!envBase) return VOLCENGINE_DEFAULT_API_URL;
+  if (envBase.includes("/chat/completions")) return envBase;
+  const withoutTrailingSlash = envBase.replace(/\/+$/, "");
+  return `${withoutTrailingSlash}/chat/completions`;
+}
 
 // API 调用超时时间（毫秒）
 const API_TIMEOUT_MS = 60000;
 
-type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope";
+type Provider = "zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope" | "volcengine";
 
 function getProviderForModel(model: string): Provider | null {
   const modelRef =
@@ -240,7 +249,8 @@ async function runBatchItem(
   headerTokendanceKey: string | null,
   headerTokendanceBaseUrl: string | null,
   headerMimoKey: string | null,
-  headerModelscopeKey: string | null
+  headerModelscopeKey: string | null,
+  headerVolcengineKey: string | null
 ): Promise<{ ok: true; data: unknown } | { ok: false; status: number; error: string; details?: unknown }> {
   const {
     model,
@@ -259,7 +269,7 @@ async function runBatchItem(
   }
 
   const modelProvider: Provider | null =
-    provider === "dashscope" || provider === "zenmux" || provider === "tokendance" || provider === "mimo" || provider === "modelscope" ? provider : getProviderForModel(model);
+    provider === "dashscope" || provider === "zenmux" || provider === "tokendance" || provider === "mimo" || provider === "modelscope" || provider === "volcengine" ? provider : getProviderForModel(model);
   if (!modelProvider) {
     return { ok: false, status: 400, error: `Unknown model: ${String(model ?? "").trim() || "unknown"}` };
   }
@@ -281,9 +291,12 @@ async function runBatchItem(
     if (modelProvider === "modelscope" && !headerModelscopeKey) {
       return { ok: false, status: 401, error: "此模型需要您提供魔搭 API Token" };
     }
+    if (modelProvider === "volcengine" && !headerVolcengineKey) {
+      return { ok: false, status: 401, error: "此模型需要您提供火山引擎 API Key" };
+    }
   }
 
-  const hasAnyCustomKeyHeader = Boolean((headerApiKey ?? "").trim() || (headerDashscopeKey ?? "").trim() || (headerTokendanceKey ?? "").trim() || (headerMimoKey ?? "").trim() || (headerModelscopeKey ?? "").trim());
+  const hasAnyCustomKeyHeader = Boolean((headerApiKey ?? "").trim() || (headerDashscopeKey ?? "").trim() || (headerTokendanceKey ?? "").trim() || (headerMimoKey ?? "").trim() || (headerModelscopeKey ?? "").trim() || (headerVolcengineKey ?? "").trim());
 
   const modelRefOverride = getModelRef(model);
   const normalizedTemperature =
@@ -586,6 +599,68 @@ async function runBatchItem(
     return { ok: true, data: result };
   }
 
+  // ── Volcengine (火山引擎) batch ────────────────────────────────────
+  if (modelProvider === "volcengine") {
+    if (hasAnyCustomKeyHeader && !headerVolcengineKey) {
+      return { ok: false, status: 401, error: "已启用自定义 Key，但未提供火山引擎 API Key（已拒绝回退到系统 Key）" };
+    }
+    const volcengineApiKey = headerVolcengineKey || process.env.VOLCENGINE_API_KEY;
+    if (!volcengineApiKey) {
+      return { ok: false, status: 500, error: "VOLCENGINE_API_KEY not configured on server" };
+    }
+
+    const volcengineMessages = stripCacheControl(processedMessages);
+
+    const requestBody: Record<string, unknown> = {
+      model,
+      messages: volcengineMessages,
+      temperature: cappedTemperature,
+    };
+    if (typeof max_tokens === "number" && Number.isFinite(max_tokens)) {
+      requestBody.max_tokens = Math.max(16, Math.floor(max_tokens));
+    }
+    if (response_format && supportsResponseFormat(model)) {
+      requestBody.response_format = response_format;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(getVolcengineUrl(), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${volcengineApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let parsed: unknown = undefined;
+      try {
+        parsed = JSON.parse(errorText);
+      } catch {
+        // ignore
+      }
+      return {
+        ok: false,
+        status: response.status,
+        error: `Volcengine API error: ${response.status}`,
+        details: parsed ?? errorText,
+      };
+    }
+
+    const result = await response.json();
+    return { ok: true, data: result };
+  }
+
   // ── ZenMux (default) batch ─────────────────────────────────────────
   if (hasAnyCustomKeyHeader && !headerApiKey) {
     return { ok: false, status: 401, error: "已启用自定义 Key，但未提供 Zenmux API Key（已拒绝回退到系统 Key）" };
@@ -712,10 +787,12 @@ export async function POST(request: NextRequest) {
   const earlyDashscopeKey = request.headers.get("x-dashscope-api-key")?.trim();
   const earlyTokendanceKey = request.headers.get("x-tokendance-api-key")?.trim();
   const earlyTokendanceBaseUrl = request.headers.get("x-tokendance-base-url")?.trim();
+  const earlyVolcengineKey = request.headers.get("x-volcengine-api-key")?.trim();
   const hasCustomKeys = Boolean(
     (earlyZenmuxKey ?? "") ||
     (earlyDashscopeKey ?? "") ||
-    ((earlyTokendanceKey ?? "") && (earlyTokendanceBaseUrl ?? ""))
+    ((earlyTokendanceKey ?? "") && (earlyTokendanceBaseUrl ?? "")) ||
+    (earlyVolcengineKey ?? "")
   );
 
   if (!hasCustomKeys) {
@@ -740,9 +817,10 @@ export async function POST(request: NextRequest) {
       const headerTokendanceBaseUrl = request.headers.get("x-tokendance-base-url")?.trim() || null;
       const headerMimoKey = request.headers.get("x-mimo-api-key")?.trim() || null;
       const headerModelscopeKey = request.headers.get("x-modelscope-api-key")?.trim() || null;
+      const headerVolcengineKey = request.headers.get("x-volcengine-api-key")?.trim() || null;
       const requests = body.requests as ChatRequestPayload[];
       const results = await Promise.all(
-        requests.map((req) => runBatchItem(req, headerApiKey, headerDashscopeKey, headerTokendanceKey, headerTokendanceBaseUrl, headerMimoKey, headerModelscopeKey))
+        requests.map((req) => runBatchItem(req, headerApiKey, headerDashscopeKey, headerTokendanceKey, headerTokendanceBaseUrl, headerMimoKey, headerModelscopeKey, headerVolcengineKey))
       );
       return NextResponse.json({ results });
     }
@@ -758,7 +836,7 @@ export async function POST(request: NextRequest) {
       provider,
     } = body;
     const modelProvider: Provider | null =
-      provider === "dashscope" || provider === "zenmux" || provider === "tokendance" || provider === "mimo" || provider === "modelscope" ? provider : getProviderForModel(model);
+      provider === "dashscope" || provider === "zenmux" || provider === "tokendance" || provider === "mimo" || provider === "modelscope" || provider === "volcengine" ? provider : getProviderForModel(model);
     if (!modelProvider) {
       // Reject unknown models early to avoid mis-routing.
       return NextResponse.json(
@@ -772,7 +850,8 @@ export async function POST(request: NextRequest) {
     const headerTokendanceBaseUrl = request.headers.get("x-tokendance-base-url")?.trim();
     const headerMimoKey = request.headers.get("x-mimo-api-key")?.trim();
     const headerModelscopeKey = request.headers.get("x-modelscope-api-key")?.trim();
-    const hasAnyCustomKeyHeader = Boolean((headerApiKey ?? "").trim() || (headerDashscopeKey ?? "").trim() || (headerTokendanceKey ?? "").trim() || (headerMimoKey ?? "").trim() || (headerModelscopeKey ?? "").trim());
+    const headerVolcengineKey = request.headers.get("x-volcengine-api-key")?.trim();
+    const hasAnyCustomKeyHeader = Boolean((headerApiKey ?? "").trim() || (headerDashscopeKey ?? "").trim() || (headerTokendanceKey ?? "").trim() || (headerMimoKey ?? "").trim() || (headerModelscopeKey ?? "").trim() || (headerVolcengineKey ?? "").trim());
     const isDefaultModel = PROJECT_MODELS.some((ref) => ref.model === model);
 
     const modelRefOverride = getModelRef(model);
@@ -836,6 +915,12 @@ export async function POST(request: NextRequest) {
       if (modelProvider === "modelscope" && !headerModelscopeKey) {
         return NextResponse.json(
           { error: "此模型需要您提供魔搭 API Token" },
+          { status: 401 }
+        );
+      }
+      if (modelProvider === "volcengine" && !headerVolcengineKey) {
+        return NextResponse.json(
+          { error: "此模型需要您提供火山引擎 API Key" },
           { status: 401 }
         );
       }
@@ -1185,6 +1270,92 @@ export async function POST(request: NextRequest) {
         const errorText = await response.text().catch(() => "");
         return NextResponse.json(
           { error: `ModelScope API error: ${response.status} - ${errorText}` },
+          { status: response.status }
+        );
+      }
+
+      if (stream) {
+        const headers = new Headers();
+        headers.set("Content-Type", "text/event-stream");
+        headers.set("Cache-Control", "no-cache");
+        headers.set("Connection", "keep-alive");
+
+        return new Response(response.body, { headers });
+      }
+
+      const result = await response.json();
+      return NextResponse.json(result);
+    }
+
+    // ── Volcengine (火山引擎) ──────────────────────────────────────────
+    if (modelProvider === "volcengine") {
+      if (hasAnyCustomKeyHeader && !headerVolcengineKey) {
+        return NextResponse.json(
+          { error: "已启用自定义 Key，但未提供火山引擎 API Key（已拒绝回退到系统 Key）" },
+          { status: 401 }
+        );
+      }
+
+      const volcengineApiKey = headerVolcengineKey || process.env.VOLCENGINE_API_KEY;
+      if (!volcengineApiKey) {
+        return NextResponse.json(
+          { error: "VOLCENGINE_API_KEY not configured on server" },
+          { status: 500 }
+        );
+      }
+
+      // Volcengine is OpenAI-compatible, strip cache_control (not supported)
+      const volcengineMessages = stripCacheControl(processedMessages);
+
+      const requestBody: Record<string, unknown> = {
+        model,
+        messages: volcengineMessages,
+        temperature: cappedTemperature,
+      };
+      if (typeof max_tokens === "number" && Number.isFinite(max_tokens)) {
+        requestBody.max_tokens = Math.max(16, Math.floor(max_tokens));
+      }
+      if (stream) {
+        requestBody.stream = true;
+      }
+      if (response_format && supportsResponseFormat(model)) {
+        requestBody.response_format = response_format;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+      let response: Response;
+      try {
+        response = await fetch(getVolcengineUrl(), {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${volcengineApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        const isAbort =
+          fetchError instanceof Error && fetchError.name === "AbortError";
+        return NextResponse.json(
+          {
+            error: isAbort
+              ? `Volcengine API timeout after ${API_TIMEOUT_MS / 1000}s`
+              : `Volcengine API fetch error: ${String(fetchError)}`,
+          },
+          { status: isAbort ? 504 : 502 }
+        );
+      }
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        return NextResponse.json(
+          { error: `Volcengine API error: ${response.status} - ${errorText}` },
           { status: response.status }
         );
       }

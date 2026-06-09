@@ -15,6 +15,8 @@ const VALIDATED_DASHSCOPE_KEY_STORAGE = "wolfcha_validated_dashscope_key";
 const VALIDATED_MIMO_KEY_STORAGE = "wolfcha_validated_mimo_key";
 const MODELSCOPE_API_KEY_STORAGE = "wolfcha_modelscope_api_key";
 const VALIDATED_MODELSCOPE_KEY_STORAGE = "wolfcha_validated_modelscope_key";
+const VOLCENGINE_API_KEY_STORAGE = "wolfcha_volcengine_api_key";
+const VALIDATED_VOLCENGINE_KEY_STORAGE = "wolfcha_validated_volcengine_key";
 const FETCHED_MODELS_STORAGE = "wolfcha_fetched_models";
 
 function canUseStorage(): boolean {
@@ -77,6 +79,14 @@ export function setModelscopeApiKey(key: string) {
   writeStorage(MODELSCOPE_API_KEY_STORAGE, key);
 }
 
+export function getVolcengineApiKey(): string {
+  return readStorage(VOLCENGINE_API_KEY_STORAGE);
+}
+
+export function setVolcengineApiKey(key: string) {
+  writeStorage(VOLCENGINE_API_KEY_STORAGE, key);
+}
+
 export function getMinimaxGroupId(): string {
   return readStorage(MINIMAX_GROUP_ID_STORAGE);
 }
@@ -121,6 +131,14 @@ export function setValidatedModelscopeKey(key: string) {
   writeStorage(VALIDATED_MODELSCOPE_KEY_STORAGE, key);
 }
 
+export function getValidatedVolcengineKey(): string {
+  return readStorage(VALIDATED_VOLCENGINE_KEY_STORAGE);
+}
+
+export function setValidatedVolcengineKey(key: string) {
+  writeStorage(VALIDATED_VOLCENGINE_KEY_STORAGE, key);
+}
+
 export function hasDashscopeKey(): boolean {
   return Boolean(getDashscopeApiKey());
 }
@@ -131,6 +149,10 @@ export function hasMimoKey(): boolean {
 
 export function hasModelscopeKey(): boolean {
   return Boolean(getModelscopeApiKey());
+}
+
+export function hasVolcengineKey(): boolean {
+  return Boolean(getVolcengineApiKey());
 }
 
 export function hasMinimaxKey(): boolean {
@@ -144,6 +166,7 @@ function resolveModelWhenCustomEnabled(preferred: string, fallbackPreferred: str
   if (hasDashscopeKey()) allowedProviders.add("dashscope");
   if (hasMimoKey()) allowedProviders.add("mimo");
   if (hasModelscopeKey()) allowedProviders.add("modelscope");
+  if (hasVolcengineKey()) allowedProviders.add("volcengine");
 
   if (allowedProviders.size === 0) return preferred;
 
@@ -175,7 +198,7 @@ export function isCustomKeyEnabled(): boolean {
   if (!flagEnabled) return false;
   // 额外安全检查：即使标志位为 true，如果没有任何有效的 LLM API key，也返回 false
   // 这可以防止用户开启了开关但没有正确配置 key 的情况
-  const hasAnyLLMKey = hasZenmuxKey() || hasDashscopeKey() || hasMimoKey() || hasModelscopeKey();
+  const hasAnyLLMKey = hasZenmuxKey() || hasDashscopeKey() || hasMimoKey() || hasModelscopeKey() || hasVolcengineKey();
   return hasAnyLLMKey;
 }
 
@@ -314,6 +337,8 @@ export function clearApiKeys() {
   window.localStorage.removeItem(VALIDATED_MIMO_KEY_STORAGE);
   window.localStorage.removeItem(MODELSCOPE_API_KEY_STORAGE);
   window.localStorage.removeItem(VALIDATED_MODELSCOPE_KEY_STORAGE);
+  window.localStorage.removeItem(VOLCENGINE_API_KEY_STORAGE);
+  window.localStorage.removeItem(VALIDATED_VOLCENGINE_KEY_STORAGE);
   window.localStorage.removeItem(FETCHED_MODELS_STORAGE);
 }
 
@@ -332,7 +357,8 @@ export async function validateApiKeyBalance(): Promise<KeyValidationResult> {
   const dashscopeKey = getDashscopeApiKey();
   const mimoKey = getMimoApiKey();
   const modelscopeKey = getModelscopeApiKey();
-  if (!zenmuxKey && !dashscopeKey && !mimoKey && !modelscopeKey) {
+  const volcengineKey = getVolcengineApiKey();
+  if (!zenmuxKey && !dashscopeKey && !mimoKey && !modelscopeKey && !volcengineKey) {
     return { valid: false, error: "未配置任何 API Key", errorCode: "no_key" };
   }
 
@@ -351,6 +377,9 @@ export async function validateApiKeyBalance(): Promise<KeyValidationResult> {
     }
     if (modelscopeKey) {
       headers["X-Modelscope-Api-Key"] = modelscopeKey;
+    }
+    if (volcengineKey) {
+      headers["X-Volcengine-Api-Key"] = volcengineKey;
     }
 
     const response = await fetch("/api/validate-key", {
