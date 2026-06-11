@@ -6,6 +6,7 @@ const PROVIDER_CHAT_URL: Record<string, string> = {
   dashscope: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
 };
 
+// 火山引擎 Chat URL 解析（与 chat/route.ts 保持一致）
 function getVolcengineChatUrl(): string {
   const envBase = process.env.VOLCENGINE_BASE_URL?.trim();
   if (!envBase) return "https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions";

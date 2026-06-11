@@ -5,6 +5,7 @@ const ZENMUX_API_URL = "https://zenmux.ai/api/v1/chat/completions";
 const DASHSCOPE_CHAT_COMPLETIONS_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const MIMO_DEFAULT_API_URL = "https://api.mimo.xiaomi.com/v1/chat/completions";
 const MODELSCOPE_CHAT_COMPLETIONS_URL = "https://api-inference.modelscope.cn/v1/chat/completions";
+// 火山引擎 API URL 解析（与 chat/route.ts 保持一致）
 const VOLCENGINE_DEFAULT_API_URL = "https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions";
 
 function getVolcengineUrl(): string {
@@ -541,6 +542,7 @@ async function validateModelscopeKey(apiKey: string): Promise<ValidationResult> 
   }
 }
 
+// 验证火山引擎 API Key — 发送 "hi" 测试连通性，使用 VOLCENGINE_VALIDATION_MODEL
 async function validateVolcengineKey(apiKey: string): Promise<ValidationResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS);

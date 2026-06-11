@@ -15,6 +15,7 @@ const VALIDATED_DASHSCOPE_KEY_STORAGE = "wolfcha_validated_dashscope_key";
 const VALIDATED_MIMO_KEY_STORAGE = "wolfcha_validated_mimo_key";
 const MODELSCOPE_API_KEY_STORAGE = "wolfcha_modelscope_api_key";
 const VALIDATED_MODELSCOPE_KEY_STORAGE = "wolfcha_validated_modelscope_key";
+// 火山引擎（Agent Plan）— localStorage 存储键
 const VOLCENGINE_API_KEY_STORAGE = "wolfcha_volcengine_api_key";
 const VALIDATED_VOLCENGINE_KEY_STORAGE = "wolfcha_validated_volcengine_key";
 const FETCHED_MODELS_STORAGE = "wolfcha_fetched_models";
@@ -79,6 +80,7 @@ export function setModelscopeApiKey(key: string) {
   writeStorage(MODELSCOPE_API_KEY_STORAGE, key);
 }
 
+// 火山引擎 API Key 读写（localStorage，带 24h 过期）
 export function getVolcengineApiKey(): string {
   return readStorage(VOLCENGINE_API_KEY_STORAGE);
 }
@@ -131,6 +133,7 @@ export function setValidatedModelscopeKey(key: string) {
   writeStorage(VALIDATED_MODELSCOPE_KEY_STORAGE, key);
 }
 
+// 火山引擎已验证的 Key（用于 UI 显示绿色勾，与当前输入值比对）
 export function getValidatedVolcengineKey(): string {
   return readStorage(VALIDATED_VOLCENGINE_KEY_STORAGE);
 }
@@ -151,6 +154,7 @@ export function hasModelscopeKey(): boolean {
   return Boolean(getModelscopeApiKey());
 }
 
+// 是否配置了火山引擎 Key（用于判断 provider 可用性）
 export function hasVolcengineKey(): boolean {
   return Boolean(getVolcengineApiKey());
 }

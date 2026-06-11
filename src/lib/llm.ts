@@ -101,6 +101,7 @@ export function resolveApiKeySource(model: string): ApiKeySource {
    if (provider === "modelscope") {
      return getModelscopeApiKey() ? "user" : "project";
    }
+   // 火山引擎：用户配置了 Key 则用 "user"，否则回退到 "project"
    if (provider === "volcengine") {
      return getVolcengineApiKey() ? "user" : "project";
    }
@@ -572,7 +573,7 @@ export async function generateCompletion(
     headers["X-Modelscope-Api-Key"] = modelscopeApiKey;
   }
   if (volcengineApiKey) {
-    headers["X-Volcengine-Api-Key"] = volcengineApiKey;
+    headers["X-Volcengine-Api-Key"] = volcengineApiKey;  // 火山引擎 Key 传给服务端路由
   }
 
   Object.assign(headers, await getAuthHeaders());
@@ -689,7 +690,7 @@ export async function generateCompletionBatch(
     headers["X-Modelscope-Api-Key"] = modelscopeApiKey;
   }
   if (volcengineApiKey) {
-    headers["X-Volcengine-Api-Key"] = volcengineApiKey;
+    headers["X-Volcengine-Api-Key"] = volcengineApiKey;  // 火山引擎 Key 传给服务端路由
   }
 
   Object.assign(headers, await getAuthHeaders());
@@ -789,7 +790,7 @@ export async function* generateCompletionStream(
     headers["X-Modelscope-Api-Key"] = modelscopeApiKey;
   }
   if (volcengineApiKey) {
-    headers["X-Volcengine-Api-Key"] = volcengineApiKey;
+    headers["X-Volcengine-Api-Key"] = volcengineApiKey;  // 火山引擎 Key 传给服务端路由
   }
 
   Object.assign(headers, await getAuthHeaders());

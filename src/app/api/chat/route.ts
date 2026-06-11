@@ -12,6 +12,8 @@ const DASHSCOPE_API_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v
 const DASHSCOPE_CHAT_COMPLETIONS_URL = `${DASHSCOPE_API_BASE_URL}/chat/completions`;
 const MIMO_DEFAULT_API_URL = "https://api.mimo.xiaomi.com/v1/chat/completions";
 const MODELSCOPE_CHAT_COMPLETIONS_URL = "https://api-inference.modelscope.cn/v1/chat/completions";
+// 火山引擎（Agent Plan）— 默认使用 /api/plan/v3 端点
+// 可通过 VOLCENGINE_BASE_URL 环境变量覆盖（如自定义接入点地址）
 const VOLCENGINE_DEFAULT_API_URL = "https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions";
 
 function getVolcengineUrl(): string {
@@ -787,7 +789,7 @@ export async function POST(request: NextRequest) {
   const earlyDashscopeKey = request.headers.get("x-dashscope-api-key")?.trim();
   const earlyTokendanceKey = request.headers.get("x-tokendance-api-key")?.trim();
   const earlyTokendanceBaseUrl = request.headers.get("x-tokendance-base-url")?.trim();
-  const earlyVolcengineKey = request.headers.get("x-volcengine-api-key")?.trim();
+  const earlyVolcengineKey = request.headers.get("x-volcengine-api-key")?.trim();  // 火山引擎 Key（早期读取用于扣费判断）
   const hasCustomKeys = Boolean(
     (earlyZenmuxKey ?? "") ||
     (earlyDashscopeKey ?? "") ||

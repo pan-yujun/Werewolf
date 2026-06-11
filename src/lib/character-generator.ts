@@ -96,7 +96,7 @@ export const getAvailablePlayerModelPool = (): ModelRef[] => {
   if (hasDashscopeKey()) allowedProviders.add("dashscope");
   if (hasMimoKey()) allowedProviders.add("mimo");
   if (hasModelscopeKey()) allowedProviders.add("modelscope");
-  if (hasVolcengineKey()) allowedProviders.add("volcengine");
+  if (hasVolcengineKey()) allowedProviders.add("volcengine");  // 火山引擎 Key 可用时，将其模型加入 AI 玩家候选池
   if (allowedProviders.size === 0) return defaultPool;
 
   const fetched = getFetchedModels();

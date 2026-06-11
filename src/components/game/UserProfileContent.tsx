@@ -240,7 +240,7 @@ export function UserProfileContent({
   const dashscopeConfigured = Boolean(dashscopeKey.trim());
   const mimoConfigured = Boolean(mimoKey.trim());
   const modelscopeConfigured = Boolean(modelscopeKey.trim());
-  const volcengineConfigured = Boolean(volcengineKey.trim());
+  const volcengineConfigured = Boolean(volcengineKey.trim());  // 火山引擎 Key 是否已填写
   const modelPool = useMemo(() => {
     return ALL_MODELS;
   }, []);
@@ -446,7 +446,7 @@ export function UserProfileContent({
     setGeneratorModelState(nextGeneratorModel);
     setSummaryModelState(nextSummaryModel);
     setReviewModelState(nextReviewModel);
-    // 通知其他组件模型池已更新（WelcomeScreen 等监听此事件）
+    // 通知 WelcomeScreen 等组件刷新模型池（AI 玩家候选、自定义角色下拉列表）
     window.dispatchEvent(new Event("wolfcha-model-pool-changed"));
     toast(t("customKey.toasts.saved"), { description: t("customKey.toasts.savedDesc") });
     onSave?.();
@@ -583,6 +583,7 @@ export function UserProfileContent({
     }
   };
 
+  // 验证火山引擎 API Key — 调用 /api/validate-key 接口测试连通性
   const handleValidateVolcengine = async () => {
     if (isValidatingVolcengine || !volcengineKey.trim()) return;
     setIsValidatingVolcengine(true);

@@ -308,6 +308,8 @@ export const MODEL_IDS = {
     minimaxM27: "MiniMax/MiniMax-M2.7",
     mimoV2: "XiaomiMiMo/MiMo-V2-Flash",
   },
+  // 火山引擎（Agent Plan）— API 端点：https://ark.cn-beijing.volces.com/api/plan/v3
+  // 模型 ID 即火山引擎控制台中的模型标识符，非接入点 ID
   volcengine: {
     deepseekV32: "deepseek-v3.2",
     deepseekV4Flash: "deepseek-v4-flash",
@@ -347,7 +349,7 @@ export const DEFAULT_MODEL_CONFIG = {
     dashscope: MODEL_IDS.dashscope.deepseek,
     mimo: MODEL_IDS.mimo.mimoV25,
     modelscope: MODEL_IDS.modelscope.deepseekV4Flash,
-    volcengine: MODEL_IDS.volcengine.deepseekV4Flash,
+    volcengine: MODEL_IDS.volcengine.deepseekV4Flash,  // 火山引擎验证模型（发送 "hi" 测试连通性）
   },
 } as const;
 
@@ -380,7 +382,7 @@ export const PROJECT_MODELS: ModelRef[] = [
   { provider: "zenmux", model: MODEL_IDS.zenmux.geminiFlashLite },
   { provider: "mimo", model: MODEL_IDS.mimo.mimoV25 },
   { provider: "modelscope", model: MODEL_IDS.modelscope.deepseekV4Flash },
-  { provider: "volcengine", model: MODEL_IDS.volcengine.deepseekV4Flash },
+  { provider: "volcengine", model: MODEL_IDS.volcengine.deepseekV4Flash },  // 火山引擎验证用模型
 ];
 
 // User-selectable models when custom key is enabled.
@@ -407,6 +409,7 @@ export const ALL_MODELS: ModelRef[] = [
   { provider: "modelscope", model: MODEL_IDS.modelscope.glm5 },
   { provider: "modelscope", model: MODEL_IDS.modelscope.kimiK25 },
   { provider: "modelscope", model: MODEL_IDS.modelscope.mimoV2 },
+  // 火山引擎（Agent Plan）可选模型池 — 需用户配置 VOLCENGINE_API_KEY
   { provider: "volcengine", model: MODEL_IDS.volcengine.deepseekV32 },
   { provider: "volcengine", model: MODEL_IDS.volcengine.deepseekV4Flash },
   { provider: "volcengine", model: MODEL_IDS.volcengine.deepseekV4Pro },

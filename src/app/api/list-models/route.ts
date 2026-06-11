@@ -6,6 +6,7 @@ const PROVIDER_MODELS_URL: Record<string, string> = {
   dashscope: "https://dashscope.aliyuncs.com/compatible-mode/v1/models",
 };
 
+// 火山引擎模型列表 URL — Agent Plan 的 /models 接口返回 404，但保留实现以备后续支持
 function getVolcengineModelsUrl(): string {
   const envBase = process.env.VOLCENGINE_BASE_URL?.trim();
   if (!envBase) return "https://ark.cn-beijing.volces.com/api/plan/v3/models";

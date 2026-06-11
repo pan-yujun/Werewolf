@@ -179,6 +179,10 @@ function getRitualCueFromSystemMessage(content: string): { title: string; subtit
 
 // ============ 主组件 ============
 
+// 自动推进延迟跳过标记：打字机效果完成后立即推进到下一段/下一位发言者
+// 打字机效果本身已提供了自然的阅读节奏，无需额外等待
+let skipAutoAdvanceDelay = false;
+
 export default function Home() {
   const t = useTranslations();
   const router = useRouter();
@@ -805,7 +809,12 @@ export default function Home() {
     if (currentDialogue) {
       const r = await advanceSpeech();
       if (r?.shouldAdvanceToNextSpeaker) {
+        // 跳过延迟：打字机效果本身已提供阅读节奏，切换发言者后立即开始生成
+        skipAutoAdvanceDelay = r.shouldAutoAdvanceToNextAI ?? true;
         await handleNextRound();
+      } else {
+        // 同一发言者的下一段：打字完成后立即推进
+        skipAutoAdvanceDelay = true;
       }
       return;
     }
@@ -818,7 +827,7 @@ export default function Home() {
   const autoAdvanceTimeoutRef = useRef<number | null>(null);
   const lastAutoAdvanceSignatureRef = useRef<string | null>(null);
   const autoAdvanceDelayMs = 2500;
-  
+
   // Track when typing finishes to trigger auto-advance
   useEffect(() => {
     const clearAutoAdvanceTimeout = () => {
@@ -873,7 +882,11 @@ export default function Home() {
 
       clearAutoAdvanceTimeout();
 
-      const delayMs = autoAdvanceDelayMs;
+      // 快速推进：同一发言者的段落打字完成后立即推进，无需额外延迟
+      // 打字机效果本身已提供了自然的阅读节奏
+      const isSameSpeakerAdvance = skipAutoAdvanceDelay;
+      const delayMs = isSameSpeakerAdvance ? 0 : autoAdvanceDelayMs;
+      skipAutoAdvanceDelay = false;
       autoAdvanceTimeoutRef.current = window.setTimeout(() => {
         void handleAdvanceDialogue();
       }, delayMs);
@@ -919,6 +932,7 @@ export default function Home() {
         window.clearTimeout(autoAdvanceTimeoutRef.current);
         autoAdvanceTimeoutRef.current = null;
       }
+      skipAutoAdvanceDelay = false;
     };
   }, []);
 

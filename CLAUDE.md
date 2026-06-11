@@ -20,6 +20,7 @@ Copy `.env.example` to `.env.local` and fill in:
 - `MINIMAX_API_KEY` / `MINIMAX_GROUP_ID` — TTS voice synthesis
 - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` / `SUPABASE_SERVICE_ROLE_KEY` — auth & database
 - `DASHSCOPE_API_KEY` — Alibaba Cloud model support
+- `VOLCENGINE_API_KEY` / `VOLCENGINE_BASE_URL` — 火山引擎 Agent Plan（默认 `https://ark.cn-beijing.volces.com/api/plan/v3`）
 - `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_ID` — payments
 - `NEXT_PUBLIC_WATCHA_CLIENT_ID` / `WATCHA_CLIENT_SECRET` — optional OAuth
 - `NEWAPI_API_KEY` / `NEWAPI_BASE_URL` — optional custom model endpoint
@@ -54,8 +55,9 @@ Defined in `src/types/game.ts`. Night: `NIGHT_START → NIGHT_GUARD_ACTION → N
 
 ### AI Integration
 
-- All LLM calls go through the **`/api/chat`** route (`src/app/api/chat/route.ts`), which proxies to ZenMux, Dashscope, or a custom NewAPI endpoint based on the model's provider
+- All LLM calls go through the **`/api/chat`** route (`src/app/api/chat/route.ts`), which proxies to ZenMux, Dashscope, MiMo, ModelScope, Volcengine, or a custom NewAPI endpoint based on the model's provider
 - Models are registered in `src/types/game.ts` as `ALL_MODELS` and `PROJECT_MODELS` (each as `ModelRef` with `provider`, `model`, optional `temperature`/`reasoning`)
+- **Provider list**: `"zenmux" | "dashscope" | "tokendance" | "mimo" | "modelscope" | "volcengine"`
 - Prompt construction per phase is handled by `GamePhase` subclasses via `getPrompt(context, player): PromptResult`
 - `src/lib/llm.ts` — low-level streaming fetch helper
 - `src/lib/character-generator.ts` — generates AI player personas (MBTI, background, style); supports Genshin mode
@@ -76,7 +78,10 @@ Defined in `src/types/game.ts`. Night: `NIGHT_START → NIGHT_GUARD_ACTION → N
 
 | Route | Purpose |
 |-------|---------|
-| `/api/chat` | LLM proxy (ZenMux / Dashscope / NewAPI) |
+| `/api/chat` | LLM proxy (ZenMux / Dashscope / MiMo / ModelScope / Volcengine / NewAPI) |
+| `/api/validate-key` | Validate user API keys for each provider |
+| `/api/list-models` | Fetch available models from provider's `/v1/models` endpoint |
+| `/api/verify-models` | Verify which fetched models are actually usable |
 | `/api/tts` | MiniMax TTS synthesis |
 | `/api/stt` | Speech-to-text |
 | `/api/credits/*` | Credit consumption, daily bonus, referral, redeem |
@@ -88,5 +93,6 @@ Defined in `src/types/game.ts`. Night: `NIGHT_START → NIGHT_GUARD_ACTION → N
 
 - **`FlowToken` pattern**: Before any async operation, capture `flowController.getToken()`. After `await`, call `token.isValid()` to abort if the flow was interrupted (e.g., game reset mid-speech).
 - **Phase prompt generation**: Add a new phase by creating/extending a `GamePhase` subclass in `src/game/phases/`, then register it in `PhaseManager`.
-- **Model routing**: Built-in models use ZenMux or Dashscope providers. Custom user API keys route through the NewAPI provider path. See `src/lib/api-keys.ts` for key resolution.
+- **Model routing**: Built-in models use ZenMux or MiMo providers. Custom user API keys route through provider-specific paths. See `src/lib/api-keys.ts` for key resolution.
+- **Adding a new provider**: ① `ModelRef.provider` 联合类型新增 → ② `MODEL_IDS` / `ALL_MODELS` / `PROJECT_MODELS` 新增 → ③ `api-keys.ts` 新增 get/set/has 函数 → ④ `llm.ts` 新增 header 传递 → ⑤ `chat/route.ts` 新增 provider 分支 → ⑥ `validate-key` / `list-models` / `verify-models` 新增 → ⑦ `UserProfileContent.tsx` 新增 UI 区块 → ⑧ `character-generator.ts` 新增 `has<Key>Key()` 判断 → ⑨ i18n 新增翻译
 - Uses **pnpm** as package manager.
